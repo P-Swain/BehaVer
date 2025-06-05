@@ -1,0 +1,35 @@
+<?xml version="1.0" ?>
+<!-- DESCRIPTION: Verilator output: XML representation of netlist -->
+<verilator_xml>
+  <files>
+    <file id="d" filename="/opt/anaconda3/envs/verilog/share/verilator/include/verilated_std.sv" language="1800-2023"/>
+    <file id="c" filename="/opt/anaconda3/envs/verilog/share/verilator/include/verilated_std_waiver.vlt" language="1800-2023"/>
+    <file id="a" filename="&lt;built-in&gt;" language="1800-2023"/>
+    <file id="b" filename="&lt;command-line&gt;" language="1800-2023"/>
+    <file id="e" filename="example1.v" language="1800-2023"/>
+  </files>
+  <module_files>
+    <file id="e" filename="example1.v" language="1800-2023"/>
+  </module_files>
+  <cells>
+    <cell loc="e,2,8,2,16" name="and_gate" submodname="and_gate" hier="and_gate"/>
+  </cells>
+  <netlist>
+    <module loc="e,2,8,2,16" name="and_gate" origName="and_gate">
+      <var loc="e,3,15,3,16" name="a" dtype_id="1" dir="input" pinIndex="1" vartype="logic" origName="a"/>
+      <var loc="e,4,15,4,16" name="b" dtype_id="1" dir="input" pinIndex="2" vartype="logic" origName="b"/>
+      <var loc="e,5,15,5,16" name="y" dtype_id="1" dir="output" pinIndex="3" vartype="logic" origName="y"/>
+      <contassign loc="e,8,12,8,13" dtype_id="1">
+        <and loc="e,8,16,8,17" dtype_id="1">
+          <varref loc="e,3,15,3,16" name="a" dtype_id="1"/>
+          <varref loc="e,4,15,4,16" name="b" dtype_id="1"/>
+        </and>
+        <varref loc="e,8,12,8,13" name="y" dtype_id="1"/>
+      </contassign>
+    </module>
+    <typetable loc="a,0,0,0,0">
+      <basicdtype loc="d,53,22,53,24" id="1" name="logic"/>
+      <voiddtype loc="d,54,21,54,30" id="2"/>
+    </typetable>
+  </netlist>
+</verilator_xml>

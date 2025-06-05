@@ -1,0 +1,458 @@
+<?xml version="1.0" ?>
+<!-- DESCRIPTION: Verilator output: XML representation of netlist -->
+<verilator_xml>
+  <files>
+    <file id="d" filename="/opt/anaconda3/envs/verilog/share/verilator/include/verilated_std.sv" language="1800-2023"/>
+    <file id="c" filename="/opt/anaconda3/envs/verilog/share/verilator/include/verilated_std_waiver.vlt" language="1800-2023"/>
+    <file id="a" filename="&lt;built-in&gt;" language="1800-2023"/>
+    <file id="b" filename="&lt;command-line&gt;" language="1800-2023"/>
+    <file id="e" filename="trafficLight.v" language="1800-2023"/>
+  </files>
+  <module_files>
+    <file id="e" filename="trafficLight.v" language="1800-2023"/>
+  </module_files>
+  <cells>
+    <cell loc="e,1,8,1,27" name="smart_traffic_light" submodname="smart_traffic_light" hier="smart_traffic_light"/>
+  </cells>
+  <netlist>
+    <module loc="e,1,8,1,27" name="smart_traffic_light" origName="smart_traffic_light">
+      <var loc="e,2,16,2,19" name="clk" dtype_id="1" dir="input" pinIndex="1" vartype="logic" origName="clk"/>
+      <var loc="e,3,16,3,21" name="rst_n" dtype_id="1" dir="input" pinIndex="2" vartype="logic" origName="rst_n"/>
+      <var loc="e,4,16,4,22" name="car_ns" dtype_id="1" dir="input" pinIndex="3" vartype="logic" origName="car_ns"/>
+      <var loc="e,5,16,5,22" name="car_ew" dtype_id="1" dir="input" pinIndex="4" vartype="logic" origName="car_ew"/>
+      <var loc="e,6,16,6,26" name="ped_button" dtype_id="1" dir="input" pinIndex="5" vartype="logic" origName="ped_button"/>
+      <var loc="e,7,22,7,30" name="light_ns" dtype_id="2" dir="output" pinIndex="6" vartype="logic" origName="light_ns"/>
+      <var loc="e,8,22,8,30" name="light_ew" dtype_id="2" dir="output" pinIndex="7" vartype="logic" origName="light_ew"/>
+      <var loc="e,9,16,9,27" name="walk_signal" dtype_id="1" dir="output" pinIndex="8" vartype="logic" origName="walk_signal"/>
+      <typedef loc="e,20,7,20,14" name="state_t" dtype_id="3"/>
+      <var loc="e,22,13,22,18" name="state" dtype_id="3" vartype="state_t" origName="state"/>
+      <var loc="e,22,20,22,30" name="next_state" dtype_id="3" vartype="state_t" origName="next_state"/>
+      <var loc="e,25,13,25,18" name="timer" dtype_id="4" vartype="integer" origName="timer"/>
+      <always loc="e,28,5,28,11">
+        <sentree loc="e,28,12,28,13">
+          <senitem loc="e,28,14,28,21" edgeType="POS">
+            <varref loc="e,28,22,28,25" name="clk" dtype_id="1"/>
+          </senitem>
+          <senitem loc="e,28,29,28,36" edgeType="NEG">
+            <varref loc="e,28,37,28,42" name="rst_n" dtype_id="1"/>
+          </senitem>
+        </sentree>
+        <begin loc="e,28,44,28,49">
+          <if loc="e,29,9,29,11">
+            <varref loc="e,29,14,29,19" name="rst_n" dtype_id="1"/>
+            <begin>
+              <begin loc="e,32,18,32,23">
+                <assigndly loc="e,33,19,33,21" dtype_id="3">
+                  <varref loc="e,33,22,33,32" name="next_state" dtype_id="3"/>
+                  <varref loc="e,33,13,33,18" name="state" dtype_id="3"/>
+                </assigndly>
+                <if loc="e,36,13,36,15">
+                  <lts loc="e,36,23,36,24" dtype_id="1">
+                    <const loc="e,36,25,36,26" name="32&apos;sh0" dtype_id="5"/>
+                    <varref loc="e,36,17,36,22" name="timer" dtype_id="4"/>
+                  </lts>
+                  <begin>
+                    <assigndly loc="e,37,23,37,25" dtype_id="4">
+                      <sub loc="e,37,32,37,33" dtype_id="4">
+                        <varref loc="e,37,26,37,31" name="timer" dtype_id="4"/>
+                        <const loc="e,37,34,37,35" name="32&apos;sh1" dtype_id="5"/>
+                      </sub>
+                      <varref loc="e,37,17,37,22" name="timer" dtype_id="4"/>
+                    </assigndly>
+                  </begin>
+                </if>
+              </begin>
+            </begin>
+            <begin>
+              <begin loc="e,29,21,29,26">
+                <assigndly loc="e,30,19,30,21" dtype_id="3">
+                  <const loc="e,30,22,30,26" name="3&apos;h0" dtype_id="3"/>
+                  <varref loc="e,30,13,30,18" name="state" dtype_id="3"/>
+                </assigndly>
+                <assigndly loc="e,31,19,31,21" dtype_id="4">
+                  <const loc="e,31,22,31,23" name="32&apos;sh0" dtype_id="5"/>
+                  <varref loc="e,31,13,31,18" name="timer" dtype_id="4"/>
+                </assigndly>
+              </begin>
+            </begin>
+          </if>
+        </begin>
+      </always>
+      <always loc="e,42,5,42,11">
+        <begin loc="e,42,17,42,22">
+          <assign loc="e,43,20,43,21" dtype_id="3">
+            <varref loc="e,43,22,43,27" name="state" dtype_id="3"/>
+            <varref loc="e,43,9,43,19" name="next_state" dtype_id="3"/>
+          </assign>
+          <case loc="e,44,9,44,13">
+            <varref loc="e,44,15,44,20" name="state" dtype_id="3"/>
+            <caseitem loc="e,45,17,45,18">
+              <const loc="e,45,13,45,17" name="3&apos;h0" dtype_id="3"/>
+              <begin loc="e,45,19,45,24">
+                <if loc="e,46,17,46,19">
+                  <varref loc="e,46,21,46,27" name="car_ns" dtype_id="1"/>
+                  <begin>
+                    <assign loc="e,47,32,47,33" dtype_id="3">
+                      <const loc="e,47,34,47,42" name="3&apos;h1" dtype_id="3"/>
+                      <varref loc="e,47,21,47,31" name="next_state" dtype_id="3"/>
+                    </assign>
+                  </begin>
+                  <begin>
+                    <if loc="e,48,22,48,24">
+                      <varref loc="e,48,26,48,32" name="car_ew" dtype_id="1"/>
+                      <begin>
+                        <assign loc="e,49,32,49,33" dtype_id="3">
+                          <const loc="e,49,34,49,42" name="3&apos;h3" dtype_id="3"/>
+                          <varref loc="e,49,21,49,31" name="next_state" dtype_id="3"/>
+                        </assign>
+                      </begin>
+                    </if>
+                  </begin>
+                </if>
+              </begin>
+            </caseitem>
+            <caseitem loc="e,51,21,51,22">
+              <const loc="e,51,13,51,21" name="3&apos;h1" dtype_id="3"/>
+              <begin loc="e,51,23,51,28">
+                <if loc="e,52,17,52,19">
+                  <eq loc="e,52,27,52,29" dtype_id="1">
+                    <const loc="e,52,30,52,31" name="32&apos;sh0" dtype_id="5"/>
+                    <varref loc="e,52,21,52,26" name="timer" dtype_id="4"/>
+                  </eq>
+                  <begin>
+                    <assign loc="e,53,32,53,33" dtype_id="3">
+                      <const loc="e,53,34,53,43" name="3&apos;h2" dtype_id="3"/>
+                      <varref loc="e,53,21,53,31" name="next_state" dtype_id="3"/>
+                    </assign>
+                  </begin>
+                </if>
+              </begin>
+            </caseitem>
+            <caseitem loc="e,55,22,55,23">
+              <const loc="e,55,13,55,22" name="3&apos;h2" dtype_id="3"/>
+              <begin loc="e,55,24,55,29">
+                <if loc="e,56,17,56,19">
+                  <eq loc="e,56,27,56,29" dtype_id="1">
+                    <const loc="e,56,30,56,31" name="32&apos;sh0" dtype_id="5"/>
+                    <varref loc="e,56,21,56,26" name="timer" dtype_id="4"/>
+                  </eq>
+                  <begin>
+                    <begin loc="e,56,33,56,38">
+                      <assign loc="e,58,36,58,37" dtype_id="3">
+                        <cond loc="e,58,38,58,46" dtype_id="3">
+                          <varref loc="e,57,25,57,31" name="car_ew" dtype_id="1"/>
+                          <const loc="e,58,38,58,46" name="3&apos;h3" dtype_id="3"/>
+                          <cond loc="e,60,38,60,47" dtype_id="3">
+                            <varref loc="e,59,30,59,40" name="ped_button" dtype_id="1"/>
+                            <const loc="e,60,38,60,47" name="3&apos;h5" dtype_id="3"/>
+                            <const loc="e,62,38,62,42" name="3&apos;h0" dtype_id="3"/>
+                          </cond>
+                        </cond>
+                        <varref loc="e,58,25,58,35" name="next_state" dtype_id="3"/>
+                      </assign>
+                    </begin>
+                  </begin>
+                </if>
+              </begin>
+            </caseitem>
+            <caseitem loc="e,65,21,65,22">
+              <const loc="e,65,13,65,21" name="3&apos;h3" dtype_id="3"/>
+              <begin loc="e,65,23,65,28">
+                <if loc="e,66,17,66,19">
+                  <eq loc="e,66,27,66,29" dtype_id="1">
+                    <const loc="e,66,30,66,31" name="32&apos;sh0" dtype_id="5"/>
+                    <varref loc="e,66,21,66,26" name="timer" dtype_id="4"/>
+                  </eq>
+                  <begin>
+                    <assign loc="e,67,32,67,33" dtype_id="3">
+                      <const loc="e,67,34,67,43" name="3&apos;h4" dtype_id="3"/>
+                      <varref loc="e,67,21,67,31" name="next_state" dtype_id="3"/>
+                    </assign>
+                  </begin>
+                </if>
+              </begin>
+            </caseitem>
+            <caseitem loc="e,69,22,69,23">
+              <const loc="e,69,13,69,22" name="3&apos;h4" dtype_id="3"/>
+              <begin loc="e,69,24,69,29">
+                <if loc="e,70,17,70,19">
+                  <eq loc="e,70,27,70,29" dtype_id="1">
+                    <const loc="e,70,30,70,31" name="32&apos;sh0" dtype_id="5"/>
+                    <varref loc="e,70,21,70,26" name="timer" dtype_id="4"/>
+                  </eq>
+                  <begin>
+                    <begin loc="e,70,33,70,38">
+                      <assign loc="e,72,36,72,37" dtype_id="3">
+                        <cond loc="e,72,38,72,46" dtype_id="3">
+                          <varref loc="e,71,25,71,31" name="car_ns" dtype_id="1"/>
+                          <const loc="e,72,38,72,46" name="3&apos;h1" dtype_id="3"/>
+                          <cond loc="e,74,38,74,47" dtype_id="3">
+                            <varref loc="e,73,30,73,40" name="ped_button" dtype_id="1"/>
+                            <const loc="e,74,38,74,47" name="3&apos;h5" dtype_id="3"/>
+                            <const loc="e,76,38,76,42" name="3&apos;h0" dtype_id="3"/>
+                          </cond>
+                        </cond>
+                        <varref loc="e,72,25,72,35" name="next_state" dtype_id="3"/>
+                      </assign>
+                    </begin>
+                  </begin>
+                </if>
+              </begin>
+            </caseitem>
+            <caseitem loc="e,79,22,79,23">
+              <const loc="e,79,13,79,22" name="3&apos;h5" dtype_id="3"/>
+              <begin loc="e,79,24,79,29">
+                <if loc="e,80,17,80,19">
+                  <eq loc="e,80,27,80,29" dtype_id="1">
+                    <const loc="e,80,30,80,31" name="32&apos;sh0" dtype_id="5"/>
+                    <varref loc="e,80,21,80,26" name="timer" dtype_id="4"/>
+                  </eq>
+                  <begin>
+                    <assign loc="e,81,32,81,33" dtype_id="3">
+                      <const loc="e,81,34,81,38" name="3&apos;h0" dtype_id="3"/>
+                      <varref loc="e,81,21,81,31" name="next_state" dtype_id="3"/>
+                    </assign>
+                  </begin>
+                </if>
+              </begin>
+            </caseitem>
+          </case>
+        </begin>
+      </always>
+      <always loc="e,87,5,87,11">
+        <sentree loc="e,87,12,87,13">
+          <senitem loc="e,87,14,87,21" edgeType="POS">
+            <varref loc="e,87,22,87,25" name="clk" dtype_id="1"/>
+          </senitem>
+          <senitem loc="e,87,29,87,36" edgeType="NEG">
+            <varref loc="e,87,37,87,42" name="rst_n" dtype_id="1"/>
+          </senitem>
+        </sentree>
+        <begin loc="e,87,44,87,49">
+          <if loc="e,88,9,88,11">
+            <varref loc="e,88,14,88,19" name="rst_n" dtype_id="1"/>
+            <begin>
+              <begin loc="e,93,18,93,23">
+                <case loc="e,94,13,94,17">
+                  <varref loc="e,94,19,94,29" name="next_state" dtype_id="3"/>
+                  <caseitem loc="e,95,21,95,22">
+                    <const loc="e,95,17,95,21" name="3&apos;h0" dtype_id="3"/>
+                    <begin loc="e,95,23,95,28">
+                      <assigndly loc="e,96,30,96,32" dtype_id="2">
+                        <const loc="e,96,33,96,38" name="2&apos;h0" dtype_id="2"/>
+                        <varref loc="e,96,21,96,29" name="light_ns" dtype_id="2"/>
+                      </assigndly>
+                      <assigndly loc="e,97,30,97,32" dtype_id="2">
+                        <const loc="e,97,33,97,38" name="2&apos;h0" dtype_id="2"/>
+                        <varref loc="e,97,21,97,29" name="light_ew" dtype_id="2"/>
+                      </assigndly>
+                      <assigndly loc="e,98,33,98,35" dtype_id="1">
+                        <const loc="e,98,36,98,37" name="1&apos;h0" dtype_id="1"/>
+                        <varref loc="e,98,21,98,32" name="walk_signal" dtype_id="1"/>
+                      </assigndly>
+                    </begin>
+                  </caseitem>
+                  <caseitem loc="e,100,25,100,26">
+                    <const loc="e,100,17,100,25" name="3&apos;h1" dtype_id="3"/>
+                    <begin loc="e,100,27,100,32">
+                      <assigndly loc="e,101,30,101,32" dtype_id="2">
+                        <const loc="e,101,33,101,38" name="2&apos;h1" dtype_id="2"/>
+                        <varref loc="e,101,21,101,29" name="light_ns" dtype_id="2"/>
+                      </assigndly>
+                      <assigndly loc="e,102,30,102,32" dtype_id="2">
+                        <const loc="e,102,33,102,38" name="2&apos;h0" dtype_id="2"/>
+                        <varref loc="e,102,21,102,29" name="light_ew" dtype_id="2"/>
+                      </assigndly>
+                      <assigndly loc="e,103,33,103,35" dtype_id="1">
+                        <const loc="e,103,36,103,37" name="1&apos;h0" dtype_id="1"/>
+                        <varref loc="e,103,21,103,32" name="walk_signal" dtype_id="1"/>
+                      </assigndly>
+                      <if loc="e,104,21,104,23">
+                        <neq loc="e,104,31,104,33" dtype_id="1">
+                          <const loc="e,104,34,104,42" name="3&apos;h1" dtype_id="3"/>
+                          <varref loc="e,104,25,104,30" name="state" dtype_id="3"/>
+                        </neq>
+                        <begin>
+                          <assigndly loc="e,105,31,105,33" dtype_id="4">
+                            <const loc="e,105,34,105,35" name="32&apos;sh5" dtype_id="5"/>
+                            <varref loc="e,105,25,105,30" name="timer" dtype_id="4"/>
+                          </assigndly>
+                        </begin>
+                      </if>
+                    </begin>
+                  </caseitem>
+                  <caseitem loc="e,107,26,107,27">
+                    <const loc="e,107,17,107,26" name="3&apos;h2" dtype_id="3"/>
+                    <begin loc="e,107,28,107,33">
+                      <assigndly loc="e,108,30,108,32" dtype_id="2">
+                        <const loc="e,108,33,108,38" name="2&apos;h2" dtype_id="2"/>
+                        <varref loc="e,108,21,108,29" name="light_ns" dtype_id="2"/>
+                      </assigndly>
+                      <assigndly loc="e,109,30,109,32" dtype_id="2">
+                        <const loc="e,109,33,109,38" name="2&apos;h0" dtype_id="2"/>
+                        <varref loc="e,109,21,109,29" name="light_ew" dtype_id="2"/>
+                      </assigndly>
+                      <assigndly loc="e,110,33,110,35" dtype_id="1">
+                        <const loc="e,110,36,110,37" name="1&apos;h0" dtype_id="1"/>
+                        <varref loc="e,110,21,110,32" name="walk_signal" dtype_id="1"/>
+                      </assigndly>
+                      <if loc="e,111,21,111,23">
+                        <neq loc="e,111,31,111,33" dtype_id="1">
+                          <const loc="e,111,34,111,43" name="3&apos;h2" dtype_id="3"/>
+                          <varref loc="e,111,25,111,30" name="state" dtype_id="3"/>
+                        </neq>
+                        <begin>
+                          <assigndly loc="e,112,31,112,33" dtype_id="4">
+                            <const loc="e,112,34,112,35" name="32&apos;sh2" dtype_id="5"/>
+                            <varref loc="e,112,25,112,30" name="timer" dtype_id="4"/>
+                          </assigndly>
+                        </begin>
+                      </if>
+                    </begin>
+                  </caseitem>
+                  <caseitem loc="e,114,25,114,26">
+                    <const loc="e,114,17,114,25" name="3&apos;h3" dtype_id="3"/>
+                    <begin loc="e,114,27,114,32">
+                      <assigndly loc="e,115,30,115,32" dtype_id="2">
+                        <const loc="e,115,33,115,38" name="2&apos;h0" dtype_id="2"/>
+                        <varref loc="e,115,21,115,29" name="light_ns" dtype_id="2"/>
+                      </assigndly>
+                      <assigndly loc="e,116,30,116,32" dtype_id="2">
+                        <const loc="e,116,33,116,38" name="2&apos;h1" dtype_id="2"/>
+                        <varref loc="e,116,21,116,29" name="light_ew" dtype_id="2"/>
+                      </assigndly>
+                      <assigndly loc="e,117,33,117,35" dtype_id="1">
+                        <const loc="e,117,36,117,37" name="1&apos;h0" dtype_id="1"/>
+                        <varref loc="e,117,21,117,32" name="walk_signal" dtype_id="1"/>
+                      </assigndly>
+                      <if loc="e,118,21,118,23">
+                        <neq loc="e,118,31,118,33" dtype_id="1">
+                          <const loc="e,118,34,118,42" name="3&apos;h3" dtype_id="3"/>
+                          <varref loc="e,118,25,118,30" name="state" dtype_id="3"/>
+                        </neq>
+                        <begin>
+                          <assigndly loc="e,119,31,119,33" dtype_id="4">
+                            <const loc="e,119,34,119,35" name="32&apos;sh5" dtype_id="5"/>
+                            <varref loc="e,119,25,119,30" name="timer" dtype_id="4"/>
+                          </assigndly>
+                        </begin>
+                      </if>
+                    </begin>
+                  </caseitem>
+                  <caseitem loc="e,121,26,121,27">
+                    <const loc="e,121,17,121,26" name="3&apos;h4" dtype_id="3"/>
+                    <begin loc="e,121,28,121,33">
+                      <assigndly loc="e,122,30,122,32" dtype_id="2">
+                        <const loc="e,122,33,122,38" name="2&apos;h0" dtype_id="2"/>
+                        <varref loc="e,122,21,122,29" name="light_ns" dtype_id="2"/>
+                      </assigndly>
+                      <assigndly loc="e,123,30,123,32" dtype_id="2">
+                        <const loc="e,123,33,123,38" name="2&apos;h2" dtype_id="2"/>
+                        <varref loc="e,123,21,123,29" name="light_ew" dtype_id="2"/>
+                      </assigndly>
+                      <assigndly loc="e,124,33,124,35" dtype_id="1">
+                        <const loc="e,124,36,124,37" name="1&apos;h0" dtype_id="1"/>
+                        <varref loc="e,124,21,124,32" name="walk_signal" dtype_id="1"/>
+                      </assigndly>
+                      <if loc="e,125,21,125,23">
+                        <neq loc="e,125,31,125,33" dtype_id="1">
+                          <const loc="e,125,34,125,43" name="3&apos;h4" dtype_id="3"/>
+                          <varref loc="e,125,25,125,30" name="state" dtype_id="3"/>
+                        </neq>
+                        <begin>
+                          <assigndly loc="e,126,31,126,33" dtype_id="4">
+                            <const loc="e,126,34,126,35" name="32&apos;sh2" dtype_id="5"/>
+                            <varref loc="e,126,25,126,30" name="timer" dtype_id="4"/>
+                          </assigndly>
+                        </begin>
+                      </if>
+                    </begin>
+                  </caseitem>
+                  <caseitem loc="e,128,26,128,27">
+                    <const loc="e,128,17,128,26" name="3&apos;h5" dtype_id="3"/>
+                    <begin loc="e,128,28,128,33">
+                      <assigndly loc="e,129,30,129,32" dtype_id="2">
+                        <const loc="e,129,33,129,38" name="2&apos;h0" dtype_id="2"/>
+                        <varref loc="e,129,21,129,29" name="light_ns" dtype_id="2"/>
+                      </assigndly>
+                      <assigndly loc="e,130,30,130,32" dtype_id="2">
+                        <const loc="e,130,33,130,38" name="2&apos;h0" dtype_id="2"/>
+                        <varref loc="e,130,21,130,29" name="light_ew" dtype_id="2"/>
+                      </assigndly>
+                      <assigndly loc="e,131,33,131,35" dtype_id="1">
+                        <const loc="e,131,36,131,37" name="1&apos;h1" dtype_id="1"/>
+                        <varref loc="e,131,21,131,32" name="walk_signal" dtype_id="1"/>
+                      </assigndly>
+                      <if loc="e,132,21,132,23">
+                        <neq loc="e,132,31,132,33" dtype_id="1">
+                          <const loc="e,132,34,132,43" name="3&apos;h5" dtype_id="3"/>
+                          <varref loc="e,132,25,132,30" name="state" dtype_id="3"/>
+                        </neq>
+                        <begin>
+                          <assigndly loc="e,133,31,133,33" dtype_id="4">
+                            <const loc="e,133,34,133,35" name="32&apos;sh4" dtype_id="5"/>
+                            <varref loc="e,133,25,133,30" name="timer" dtype_id="4"/>
+                          </assigndly>
+                        </begin>
+                      </if>
+                    </begin>
+                  </caseitem>
+                </case>
+              </begin>
+            </begin>
+            <begin>
+              <begin loc="e,88,21,88,26">
+                <assigndly loc="e,89,22,89,24" dtype_id="2">
+                  <const loc="e,89,25,89,30" name="2&apos;h0" dtype_id="2"/>
+                  <varref loc="e,89,13,89,21" name="light_ns" dtype_id="2"/>
+                </assigndly>
+                <assigndly loc="e,90,22,90,24" dtype_id="2">
+                  <const loc="e,90,25,90,30" name="2&apos;h0" dtype_id="2"/>
+                  <varref loc="e,90,13,90,21" name="light_ew" dtype_id="2"/>
+                </assigndly>
+                <assigndly loc="e,91,25,91,27" dtype_id="1">
+                  <const loc="e,91,28,91,32" name="1&apos;h0" dtype_id="1"/>
+                  <varref loc="e,91,13,91,24" name="walk_signal" dtype_id="1"/>
+                </assigndly>
+                <assigndly loc="e,92,19,92,21" dtype_id="4">
+                  <const loc="e,92,22,92,23" name="32&apos;sh0" dtype_id="5"/>
+                  <varref loc="e,92,13,92,18" name="timer" dtype_id="4"/>
+                </assigndly>
+              </begin>
+            </begin>
+          </if>
+        </begin>
+      </always>
+    </module>
+    <typetable loc="a,0,0,0,0">
+      <basicdtype loc="d,53,22,53,24" id="1" name="logic"/>
+      <voiddtype loc="d,54,21,54,30" id="6"/>
+      <basicdtype loc="e,7,12,7,15" id="2" name="logic" left="1" right="0"/>
+      <basicdtype loc="e,13,18,13,23" id="3" name="logic" left="2" right="0"/>
+      <enumdtype loc="e,13,13,13,17" id="7" name="smart_traffic_light.state_t" sub_dtype_id="3">
+        <enumitem loc="e,14,9,14,13" name="IDLE" dtype_id="3">
+          <const loc="e,14,22,14,28" name="3&apos;h0" dtype_id="3"/>
+        </enumitem>
+        <enumitem loc="e,15,9,15,17" name="NS_GREEN" dtype_id="3">
+          <const loc="e,15,22,15,28" name="3&apos;h1" dtype_id="3"/>
+        </enumitem>
+        <enumitem loc="e,16,9,16,18" name="NS_YELLOW" dtype_id="3">
+          <const loc="e,16,22,16,28" name="3&apos;h2" dtype_id="3"/>
+        </enumitem>
+        <enumitem loc="e,17,9,17,17" name="EW_GREEN" dtype_id="3">
+          <const loc="e,17,22,17,28" name="3&apos;h3" dtype_id="3"/>
+        </enumitem>
+        <enumitem loc="e,18,9,18,18" name="EW_YELLOW" dtype_id="3">
+          <const loc="e,18,22,18,28" name="3&apos;h4" dtype_id="3"/>
+        </enumitem>
+        <enumitem loc="e,19,9,19,18" name="PED_CROSS" dtype_id="3">
+          <const loc="e,19,22,19,28" name="3&apos;h5" dtype_id="3"/>
+        </enumitem>
+      </enumdtype>
+      <refdtype loc="e,22,5,22,12" id="8" name="state_t" sub_dtype_id="3"/>
+      <refdtype loc="e,22,5,22,12" id="9" name="state_t" sub_dtype_id="3"/>
+      <basicdtype loc="e,25,5,25,12" id="4" name="integer" left="31" right="0" signed="true"/>
+      <basicdtype loc="e,31,22,31,23" id="5" name="logic" left="31" right="0" signed="true"/>
+    </typetable>
+  </netlist>
+</verilator_xml>
