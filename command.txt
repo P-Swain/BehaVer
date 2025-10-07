@@ -1,5 +1,5 @@
-python3 /code/PDG_Gen_P1.py picorv32.v -o /results/picorv32_cfg.dot
+python3 /code/main.py picorv32.v -o /results/picorv32_cfg.dot
 dot -Tpdf /results/picorv32_cfg.dot  -o /results/picorv32_cfg.pdf
 
-python3 /code/PDG_Gen_P1.py trafficLight.v -o /code/trafficLight_cfg.dot
+python3 /code/main.py trafficLight.v -o /code/trafficLight_cfg.dot
 dot -Tpdf /results/trafficLight_cfg.dot  -o /results/trafficLight_cfg.pdf
