@@ -92,7 +92,9 @@ def generate_dot(graph: Graph, graph_name: str, args) -> str:
                     lines.append(f'  n{did} -> n{uid} [style=dashed,color=red,constraint=false,xlabel="{v_ssa_name}"];')
     else:  # DFG-only graph
         for nid, txt in enumerate(graph.dfg_nodes):
-            lines.append(f'  dfg_n{nid} [label="{txt.replace("​", "​\\""​")}",shape=ellipse];')
+            sanitized_txt = txt.replace('"', '\\"')
+            # Then, use this new, clean variable inside the f-string.
+            lines.append(f'  dfg_n{nid} [label="{sanitized_txt}",shape=ellipse];')
         for s, d in graph.dfg_edges:
             lines.append(f'  dfg_n{s} -> dfg_n{d};')
 
