@@ -1,5 +1,7 @@
-python3 /code/main.py picorv32.v -o /results/picorv32_cfg.dot
-dot -Tpdf /results/picorv32_cfg.dot  -o /results/picorv32_cfg.pdf
+//Before running code results folder should be present & also be in parent directory
 
-python3 /code/main.py trafficLight.v -o /code/trafficLight_cfg.dot
-dot -Tpdf /results/trafficLight_cfg.dot  -o /results/trafficLight_cfg.pdf
+python3 code/main.py samples/picorv32.v -o results/picorv32_cfg.dot
+dot -Tpdf results/picorv32_cfg.dot  -o results/picorv32_cfg.pdf
+
+python3 code/main.py samples/trafficLight.v -o code/trafficLight_cfg.dot
+dot -Tpdf results/trafficLight_cfg.dot  -o results/trafficLight_cfg.pdf
