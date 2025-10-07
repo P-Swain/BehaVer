@@ -53,13 +53,13 @@ def generate_dot(graph: Graph, graph_name: str, args) -> str:
                 attrs['tooltip'] = '"' + "\\n".join(tips) + '"'
         return ",".join(f"{k}={v}" for k, v in attrs.items())
 
-    lines = [f"digraph {graph_name} {{", "  rankdir=LR; splines=ortho;"]
+    lines = ["digraph {} {{".format(graph_name), "  rankdir=LR; splines=ortho;"]
 
     if graph_name == 'CFG':
         # Add clusters (modules, always blocks, etc.)
         used_cfg_nodes = set()
         for i, cl in enumerate(graph.clusters):
-            lines.append(f"  subgraph cluster_{i} {{")
+            lines.append("  subgraph cluster_{} {{".format(i))
             lines.append(f'    label="{cl["name"]}"; style=filled; color="{cl["color"]}";')
             for nid in cl['node_ids']:
                 used_cfg_nodes.add(nid)
