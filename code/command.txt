@@ -1,0 +1,11 @@
+python3 PDG_Gen_P1.py picorv32.v -o picorv32_cfg.dot
+dot -Tpdf picorv32_cfg.dot  -o picorv32_cfg.pdf
+dot -Tpdf PV32_CFG.dot  -o PV32_CFG.pdf
+
+python3 PDG_Gen_P1.py trafficLight.v -o trafficLight_cfg.dot
+dot -Tpdf trafficLight_cfg.dot  -o trafficLight_cfg.pdf
+dot -Tpdf TL_CFG.dot  -o TL_CFG.pdf
+
+python3 PDG_Gen_P1.py atari.v -o atari_cfg.dot
+dot -Tpdf atari_cfg.dot  -o atari_cfg.pdf
+dot -Tpdf AT_CFG.dot  -o AT_CFG.pdf
