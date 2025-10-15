@@ -10,81 +10,86 @@ import tempfile
 
 # Import our custom modules
 from graph_builder import GraphBuilder
-from dot_generator import generate_dot
+from dot_generator import generate_all_dots # Updated import
 
 def main():
-    p = argparse.ArgumentParser(description="Generate linked CFG/DFG from Verilog via Verilator")
+    p = argparse.ArgumentParser(description="Generate linked, multi-level CFG/DFG from Verilog")
     p.add_argument('verilog_file', help="Verilog source file")
     p.add_argument('-t', '--top', dest='top_module', help="Top-level module name")
-    p.add_argument('-o', '--output', dest='output_file', help="Output name (e.g. mygraph.svg). Extension decides format.")
-    p.add_argument('--format', choices=['svg', 'png', 'dot', 'pdf'], help="Override output format. Use svg for tooltips.")
-    p.add_argument('--layout-engine', choices=['dot', 'fdp', 'neato', 'circo', 'twopi'], default='fdp', help="Graphviz layout engine")
+    p.add_argument('-o', '--output', dest='output_file', help="Base output name (e.g. mygraph.svg).")
+    p.add_argument('--format', choices=['svg', 'png', 'dot', 'pdf'], default='svg', help="Output format. Use svg for interactive links.")
+    p.add_argument('--layout-engine', choices=['dot', 'fdp', 'neato', 'circo', 'twopi'], default='dot', help="Graphviz layout engine")
     p.add_argument('--no-inter-cluster-dfg', action='store_true', help="Hide DFG edges across procedural boundaries")
     args = p.parse_args()
 
-    # Determine output file name and format
+    # --- Setup Output ---
     if not args.output_file:
         base = os.path.splitext(os.path.basename(args.verilog_file))[0]
-        args.output_file = f"{base}_cfg.svg"
-        print(f"Warning: No output file specified. Defaulting to {args.output_file}")
-    
-    fmt = args.format or os.path.splitext(args.output_file)[1][1:].lower()
-    if not fmt:
-        fmt = 'svg'
-        args.output_file += '.svg'
-    args.format = fmt
+        # The main architectural file will be named based on this
+        args.output_file = f"{base}_arch.{args.format}"
+        print(f"Warning: No output file specified. Defaulting base name to '{base}'")
 
-    # 1. Read Verilog source for tooltips
+    output_basename = os.path.splitext(os.path.basename(args.output_file))[0].replace('_arch', '')
+    output_dir = os.path.dirname(args.output_file) or '.'
+
+    # --- Run Verilator ---
     try:
         with open(args.verilog_file, 'r') as f:
             verilog_lines = f.readlines()
     except FileNotFoundError:
         sys.exit(f"Error: Cannot open Verilog file '{args.verilog_file}'")
 
-    # 2. Run Verilator to generate XML AST
     with tempfile.NamedTemporaryFile(mode='w', suffix='.xml', delete=False) as tmp:
         ast_path = tmp.name
-    cmd = ['verilator', '--xml-only', '--xml-output', ast_path, '-Wno-fatal']
+    cmd = ['verilator', '--xml-only', '--xml-output', ast_path, '-Wno-fatal', args.verilog_file]
     if args.top_module:
         cmd += ['--top-module', args.top_module]
-    cmd.append(args.verilog_file)
     print("Invoking Verilator...")
     try:
         subprocess.run(cmd, check=True, text=True, capture_output=True)
     except FileNotFoundError:
-        sys.exit("Error: 'verilator' not found in your PATH. Please install Verilator.")
+        sys.exit("Error: 'verilator' not found. Please install Verilator.")
     except subprocess.CalledProcessError as e:
         sys.exit(f"Verilator error:\n{e.stderr}\n{e.stdout}")
 
-    # 3. Parse XML and build the graph model
-    print("Parsing AST and building graph...")
+    # --- Build Graph Hierarchy ---
+    print("Parsing AST and building graph hierarchy...")
     tree = ET.parse(ast_path)
     os.remove(ast_path)
     
     builder = GraphBuilder(verilog_code_lines=verilog_lines)
-    graph = builder.build_from_xml_root(tree.getroot())
+    hierarchy = builder.build_from_xml_root(tree.getroot())
 
-    # 4. Generate DOT string from the graph model
-    print("Generating DOT file content...")
-    dot_content = generate_dot(graph, 'CFG', args)
+    # --- Generate All DOT Files ---
+    print("Generating all DOT files...")
+    dot_files = generate_all_dots(hierarchy, output_basename, args)
 
-    # 5. Output DOT file or render image with Graphviz
-    if args.format == 'dot':
-        with open(args.output_file, 'w') as f:
-            f.write(dot_content)
-        print(f"✅ Wrote DOT -> {args.output_file}")
-    else:
-        print(f"Rendering {args.format.upper()} via Graphviz (engine={args.layout_engine})...")
+    # --- Save and Render All Graphs ---
+    for dot_filename, dot_content in dot_files.items():
+        base_dot_name = os.path.splitext(dot_filename)[0]
+        
+        dot_filepath = os.path.join(output_dir, dot_filename)
+        if args.format == 'dot':
+            with open(dot_filepath, 'w') as f:
+                f.write(dot_content)
+            print(f"✅ Wrote DOT -> {dot_filepath}")
+            continue
+
+        output_filepath = os.path.join(output_dir, f"{base_dot_name}.{args.format}")
+        print(f"Rendering {output_filepath} via Graphviz (engine={args.layout_engine})...")
         try:
-            cmd_dot = ['dot', f'-K{args.layout_engine}', f'-T{args.format}', '-o', args.output_file]
+            cmd_dot = ['dot', f'-K{args.layout_engine}', f'-T{args.format}', '-o', output_filepath]
             res = subprocess.run(cmd_dot, input=dot_content, text=True, check=True, capture_output=True)
             if res.stderr:
                 print(f"Graphviz warnings:\n{res.stderr}")
-            print(f"✅ Output -> {args.output_file}")
+            print(f"✅ Wrote Output -> {output_filepath}")
         except FileNotFoundError:
             sys.exit("Error: 'dot' (Graphviz) not found. Please install Graphviz.")
         except subprocess.CalledProcessError as e:
             sys.exit(f"Graphviz error:\n{e.stderr}\n{e.stdout}")
+
+    print(f"\n✨ Process complete! Start by opening the main architectural view: {output_basename}_arch.{args.format}")
+
 
 if __name__ == '__main__':
     main()
