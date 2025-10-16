@@ -13,8 +13,14 @@ import shutil
 from graph_builder import GraphBuilder
 from dot_generator import generate_all_dots
 
-def create_viewer_html(output_dir, arch_svg_basename):
-    """Creates a viewer.html file in the output directory."""
+def create_viewer_html(output_dir, top_module_arch_svg_basename, module_views):
+    """Creates a dynamic viewer.html file with a module selector."""
+    
+    options_html = ""
+    for module in module_views:
+        # Create an <option> tag for each module
+        options_html += f'          <option value="{module["file_base"]}.svg">{module["name"]}</option>\\n'
+
     html_content = f"""
 <!DOCTYPE html>
 <html lang="en">
@@ -41,11 +47,20 @@ def create_viewer_html(output_dir, arch_svg_basename):
         <p class="text-slate-600">Click on a component in the architectural view to drill down into its detailed implementation.</p>
     </header>
 
-    <div id="navigation-bar" class="flex items-center gap-4 bg-white p-3 rounded-lg shadow-sm mb-4 border border-slate-200">
+    <div id="navigation-bar" class="flex items-center flex-wrap gap-4 bg-white p-3 rounded-lg shadow-sm mb-4 border border-slate-200">
         <button id="home-button" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-md transition-colors duration-200">
-            Home (Architectural View)
+            Home (Top Module)
         </button>
+
+        <!-- New Dropdown for Module Selection -->
         <div class="flex items-center gap-2">
+            <label for="module-selector" class="font-semibold text-slate-700">Select Module:</label>
+            <select id="module-selector" class="bg-white border border-slate-300 rounded-md py-2 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500">
+{options_html}
+            </select>
+        </div>
+
+        <div class="flex items-center gap-2 ml-auto">
             <span class="font-semibold text-slate-700">Current View:</span>
             <span id="current-view-label" class="bg-slate-100 text-slate-800 font-mono text-sm px-3 py-1 rounded-md"></span>
         </div>
@@ -59,12 +74,19 @@ def create_viewer_html(output_dir, arch_svg_basename):
         const viewerFrame = document.getElementById('viewer-frame');
         const currentViewLabel = document.getElementById('current-view-label');
         const homeButton = document.getElementById('home-button');
-        const architecturalViewSrc = '{arch_svg_basename}.svg';
+        const moduleSelector = document.getElementById('module-selector');
+        
+        // This is the main architectural view (top module or first module)
+        const architecturalViewSrc = '{top_module_arch_svg_basename}.svg';
 
         function setView(src) {{
             if (src) {{
                 viewerFrame.src = src;
                 currentViewLabel.textContent = src;
+                // Sync dropdown with the current view
+                if (moduleSelector.value !== src) {{
+                    moduleSelector.value = src;
+                }}
             }} else {{
                  viewerFrame.src = 'about:blank';
                  currentViewLabel.textContent = 'No SVG loaded. Please generate graphs first.';
@@ -76,8 +98,13 @@ def create_viewer_html(output_dir, arch_svg_basename):
             setView(architecturalViewSrc);
         }});
 
+        // --- Event Listeners ---
         homeButton.addEventListener('click', () => {{
             setView(architecturalViewSrc);
+        }});
+
+        moduleSelector.addEventListener('change', (event) => {{
+            setView(event.target.value);
         }});
     </script>
 </body>
@@ -119,7 +146,6 @@ def main():
 
     with tempfile.NamedTemporaryFile(mode='w', suffix='.xml', delete=False) as tmp:
         ast_path = tmp.name
-    # CORRECTED COMMAND: Removed the erroneous '-v' flag
     cmd = ['verilator', '--xml-only', args.verilog_file, '--xml-output', ast_path, '-Wno-fatal']
     print("Invoking Verilator...")
     try:
@@ -127,7 +153,7 @@ def main():
     except FileNotFoundError:
         sys.exit("Error: 'verilator' not found. Please install Verilator.")
     except subprocess.CalledProcessError as e:
-        sys.exit(f"Verilator error:\n{e.stderr}\n{e.stdout}")
+        sys.exit(f"Verilator error:\\n{e.stderr}\\n{e.stdout}")
 
     # --- Build Graph Hierarchy ---
     print("Parsing AST and building graph hierarchy for all modules...")
@@ -144,7 +170,6 @@ def main():
     print("Generating all DOT files...")
     all_dot_files = {}
     for hierarchy in hierarchies:
-        # Each module gets its own set of files, prefixed by the Verilog file's base name
         module_output_basename = f"{base_name}_{hierarchy.name}"
         dot_files = generate_all_dots(hierarchy, module_output_basename, args)
         all_dot_files.update(dot_files)
@@ -166,31 +191,38 @@ def main():
             cmd_dot = ['dot', f'-K{args.layout_engine}', f'-T{args.format}', '-o', output_filepath]
             res = subprocess.run(cmd_dot, input=dot_content, text=True, check=True, capture_output=True)
             if res.stderr:
-                print(f"Graphviz warnings:\n{res.stderr}")
+                print(f"Graphviz warnings:\\n{res.stderr}")
             print(f"✅ Wrote Output -> {output_filepath}")
         except FileNotFoundError:
             sys.exit("Error: 'dot' (Graphviz) not found. Please install Graphviz.")
         except subprocess.CalledProcessError as e:
-            sys.exit(f"Graphviz error:\n{e.stderr}\n{e.stdout}")
+            sys.exit(f"Graphviz error:\\n{e.stderr}\\n{e.stdout}")
             
     # --- Create Viewer HTML ---
     if args.format == 'svg':
-        # Determine the main architectural view to link to
+        # Determine the main architectural view for the "Home" button
         top_module_name = ""
-        if args.top_module:
-            # Check if specified top module exists
-            if any(h.name == args.top_module for h in hierarchies):
-                top_module_name = args.top_module
-            else:
-                print(f"Warning: Top module '{args.top_module}' not found. Defaulting to first module.")
-                top_module_name = hierarchies[0].name
+        if args.top_module and any(h.name == args.top_module for h in hierarchies):
+            top_module_name = args.top_module
         else:
-            top_module_name = hierarchies[0].name # Default to the first module
+            if args.top_module:
+                print(f"Warning: Top module '{args.top_module}' not found. Defaulting to first module.")
+            top_module_name = hierarchies[0].name
         
-        arch_svg_basename = f"{base_name}_{top_module_name}_arch"
-        create_viewer_html(output_dir, arch_svg_basename)
+        top_module_arch_svg_basename = f"{base_name}_{top_module_name}_arch"
 
-    print(f"\n✨ Process complete! Open this file in your browser: {os.path.join(output_dir, 'viewer.html')}")
+        # Create a list of all module architectural views for the dropdown
+        module_views = []
+        for h in hierarchies:
+            module_views.append({
+                'name': h.name,
+                'file_base': f"{base_name}_{h.name}_arch"
+            })
+
+        # Pass all necessary info to the HTML generation function
+        create_viewer_html(output_dir, top_module_arch_svg_basename, module_views)
+
+    print(f"\\n✨ Process complete! Open this file in your browser: {os.path.join(output_dir, 'viewer.html')}")
 
 
 if __name__ == '__main__':
