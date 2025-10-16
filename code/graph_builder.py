@@ -20,8 +20,9 @@ class GraphBuilder:
             'concat': 'CONCAT', 'bitselect': 'BITSEL', 'partselect': 'PARTSEL'
         }
 
-    def build_from_xml_root(self, root: ET.Element) -> DesignHierarchy:
+    def build_from_xml_root(self, root: ET.Element) -> list[DesignHierarchy]:
         """Starts the graph building process from the XML root."""
+        hierarchies = []
         netlist = root.find('netlist')
         if netlist is not None:
             for module in netlist.findall('module'):
@@ -37,7 +38,10 @@ class GraphBuilder:
                 for item in module:
                     # We only create high-level nodes in the architectural graph
                     self._traverse_architectural_view(item)
-        return self.hierarchy
+                
+                self.current_graph.cluster_stack.pop()
+                hierarchies.append(self.hierarchy)
+        return hierarchies
 
     def _traverse_architectural_view(self, elem):
         """
@@ -58,7 +62,9 @@ class GraphBuilder:
             
             # Create a unique key for the sub-graph
             sub_graph_key = f"cluster_{len(self.hierarchy.sub_graphs)}"
-            arch_graph.clusters[parent_cluster]['metadata'][arch_node_id] = {'link': sub_graph_key}
+            if parent_cluster is not None and arch_graph.clusters:
+                 arch_graph.clusters[parent_cluster].setdefault('metadata', {})[arch_node_id] = {'link': sub_graph_key}
+
 
             # Now, create and build the detailed graph for this block
             detailed_graph = Graph(name=sub_graph_key)
@@ -79,15 +85,14 @@ class GraphBuilder:
                 child_node = self._traverse_detailed_view(child)
                 if child_node is not None:
                     self.current_graph.add_cfg_edge(last_node, child_node)
+                    # This logic might need refinement for complex CFGs to find the true 'last node'
+                    # For a simple sequence, this is okay.
                     last_node = child_node
             
             self.current_graph.cluster_stack.pop()
             
             # Restore context to the architectural graph
             self.current_graph = original_graph
-
-        # We can add logic here to find module instances for the architectural graph too
-        # For now, we only abstract away procedural blocks.
 
     def _traverse_detailed_view(self, elem):
         """
@@ -107,13 +112,12 @@ class GraphBuilder:
 
         if tag in ('var','decl','param','genvar'): return None
         if tag == 'begin':
-            last = None
-            for c in elem:
-                n = self._traverse_detailed_view(c)
-                if n is not None:
-                    if last is not None: graph.add_cfg_edge(last, n)
-                    last = n
-            return last
+            nodes = [self._traverse_detailed_view(c) for c in elem]
+            nodes = [n for n in nodes if n is not None]
+            if not nodes: return None
+            for i in range(len(nodes) - 1):
+                graph.add_cfg_edge(nodes[i], nodes[i+1])
+            return nodes[0] # Return the entry point of the block
 
         if tag in ('if','ifstmt'):
             cond = elem.find('cond') or next((c for c in elem if c.tag.lower() in self.operationmap or c.tag.lower() in ('varref','const')), None)
@@ -121,31 +125,56 @@ class GraphBuilder:
             lbl = f"if ({expr_to_str(cond)})"
             node_if = record(graph.add_cfg_node(lbl, cluster_id=parent_cluster))
             graph.cfg_node_uses[node_if] = used
+            
+            # Placeholder for the merge point after if/else
             node_end = graph.add_cfg_node('EndIf', cluster_id=parent_cluster)
             
-            then_node = self._traverse_detailed_view(elem.find('then'))
-            if then_node: graph.add_cfg_edge(node_if, then_node, 'True'); graph.add_cfg_edge(then_node, node_end)
-            else: graph.add_cfg_edge(node_if, node_end, 'True')
+            then_elem = elem.find('then')
+            if then_elem is not None:
+                then_node = self._traverse_detailed_view(then_elem)
+                if then_node:
+                    graph.add_cfg_edge(node_if, then_node, 'True')
+                    # Need to find the last node of the 'then' block to connect to end
+                    # This is a simplification; complex blocks need a more robust way to find the exit node.
+                    graph.add_cfg_edge(then_node, node_end) # Simplified connection
+            else:
+                graph.add_cfg_edge(node_if, node_end, 'True')
             
-            else_node = self._traverse_detailed_view(elem.find('else'))
-            if else_node: graph.add_cfg_edge(node_if, else_node, 'False'); graph.add_cfg_edge(else_node, node_end)
-            else: graph.add_cfg_edge(node_if, node_end, 'False')
-            return node_end
+            else_elem = elem.find('else')
+            if else_elem is not None:
+                else_node = self._traverse_detailed_view(else_elem)
+                if else_node:
+                    graph.add_cfg_edge(node_if, else_node, 'False')
+                    graph.add_cfg_edge(else_node, node_end) # Simplified connection
+            else:
+                graph.add_cfg_edge(node_if, node_end, 'False')
+            
+            # The entry point to the if-structure is the condition node itself
+            # The caller will connect the previous node to this one.
+            # We return the start of this structure.
+            return node_if
         
         if tag in ('assign','blockingassign','nonblockingassign'):
-            rhs, lhs = list(elem)[0], list(elem)[-1]
+            # The XML structure can vary, find lhs and rhs robustly
+            lhs_elem = elem.find('.//varref')
+            rhs_elems = [c for c in elem if c is not lhs_elem]
+            
+            lhs_str = expr_to_str(lhs_elem)
+            rhs_str = expr_to_str(rhs_elems[0]) if rhs_elems else ""
+
             op = '<=' if 'nonblocking' in tag else '='
-            lbl = f"{expr_to_str(lhs)} {op} {expr_to_str(rhs)}"
+            lbl = f"{lhs_str} {op} {rhs_str}"
             nid = record(graph.add_cfg_node(lbl, cluster_id=parent_cluster))
-            # DFG logic can be added here if needed for the detailed view
             return nid
         
-        # Fallback for other unhandled tags
-        last = None
+        # Fallback for other unhandled tags by just creating a label
+        unhandled_label = f"Node: {tag}"
+        nid = record(graph.add_cfg_node(unhandled_label, cluster_id=parent_cluster))
+        
+        last = nid
         for c in elem:
             nd = self._traverse_detailed_view(c)
             if nd is not None:
-                if last is not None: graph.add_cfg_edge(last, nd)
-                last = nd
-        return last
-
+                graph.add_cfg_edge(last, nd)
+                last = nd # This can create long chains, might need refinement.
+        return nid

@@ -7,30 +7,108 @@ import sys
 import os
 import argparse
 import tempfile
+import shutil
 
 # Import our custom modules
 from graph_builder import GraphBuilder
-from dot_generator import generate_all_dots # Updated import
+from dot_generator import generate_all_dots
+
+def create_viewer_html(output_dir, arch_svg_basename):
+    """Creates a viewer.html file in the output directory."""
+    html_content = f"""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Verilog Graph Viewer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {{
+            font-family: 'Inter', sans-serif;
+        }}
+        #viewer-frame {{
+            border: 1px solid #e2e8f0;
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+        }}
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 flex flex-col h-screen p-4 md:p-6">
+
+    <header class="mb-4">
+        <h1 class="text-2xl font-bold text-slate-900">Verilog Design Explorer</h1>
+        <p class="text-slate-600">Click on a component in the architectural view to drill down into its detailed implementation.</p>
+    </header>
+
+    <div id="navigation-bar" class="flex items-center gap-4 bg-white p-3 rounded-lg shadow-sm mb-4 border border-slate-200">
+        <button id="home-button" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-md transition-colors duration-200">
+            Home (Architectural View)
+        </button>
+        <div class="flex items-center gap-2">
+            <span class="font-semibold text-slate-700">Current View:</span>
+            <span id="current-view-label" class="bg-slate-100 text-slate-800 font-mono text-sm px-3 py-1 rounded-md"></span>
+        </div>
+    </div>
+
+    <main class="flex-1 bg-white rounded-lg overflow-hidden">
+        <iframe id="viewer-frame" class="w-full h-full" src=""></iframe>
+    </main>
+
+    <script>
+        const viewerFrame = document.getElementById('viewer-frame');
+        const currentViewLabel = document.getElementById('current-view-label');
+        const homeButton = document.getElementById('home-button');
+        const architecturalViewSrc = '{arch_svg_basename}.svg';
+
+        function setView(src) {{
+            if (src) {{
+                viewerFrame.src = src;
+                currentViewLabel.textContent = src;
+            }} else {{
+                 viewerFrame.src = 'about:blank';
+                 currentViewLabel.textContent = 'No SVG loaded. Please generate graphs first.';
+            }}
+        }}
+
+        // --- Initialization ---
+        document.addEventListener('DOMContentLoaded', () => {{
+            setView(architecturalViewSrc);
+        }});
+
+        homeButton.addEventListener('click', () => {{
+            setView(architecturalViewSrc);
+        }});
+    </script>
+</body>
+</html>
+"""
+    viewer_path = os.path.join(output_dir, 'viewer.html')
+    with open(viewer_path, 'w') as f:
+        f.write(html_content)
+    print(f"✅ Wrote Viewer -> {viewer_path}")
 
 def main():
     p = argparse.ArgumentParser(description="Generate linked, multi-level CFG/DFG from Verilog")
     p.add_argument('verilog_file', help="Verilog source file")
-    p.add_argument('-t', '--top', dest='top_module', help="Top-level module name")
-    p.add_argument('-o', '--output', dest='output_file', help="Base output name (e.g. mygraph.svg).")
+    p.add_argument('-t', '--top', dest='top_module', help="Top-level module name for the main viewer.")
+    p.add_argument('-o', '--output', dest='output_dir', help="Output directory for generated files.")
     p.add_argument('--format', choices=['svg', 'png', 'dot', 'pdf'], default='svg', help="Output format. Use svg for interactive links.")
     p.add_argument('--layout-engine', choices=['dot', 'fdp', 'neato', 'circo', 'twopi'], default='dot', help="Graphviz layout engine")
     p.add_argument('--no-inter-cluster-dfg', action='store_true', help="Hide DFG edges across procedural boundaries")
     args = p.parse_args()
 
     # --- Setup Output ---
-    if not args.output_file:
-        base = os.path.splitext(os.path.basename(args.verilog_file))[0]
-        # The main architectural file will be named based on this
-        args.output_file = f"{base}_arch.{args.format}"
-        print(f"Warning: No output file specified. Defaulting base name to '{base}'")
+    base_name = os.path.splitext(os.path.basename(args.verilog_file))[0]
+    if args.output_dir:
+        output_dir = args.output_dir
+    else:
+        output_dir = os.path.join('results', f"{base_name}_graphs")
+        print(f"Warning: No output directory specified. Defaulting to '{output_dir}'")
 
-    output_basename = os.path.splitext(os.path.basename(args.output_file))[0].replace('_arch', '')
-    output_dir = os.path.dirname(args.output_file) or '.'
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+        print(f"Created output directory: {output_dir}")
 
     # --- Run Verilator ---
     try:
@@ -41,9 +119,8 @@ def main():
 
     with tempfile.NamedTemporaryFile(mode='w', suffix='.xml', delete=False) as tmp:
         ast_path = tmp.name
-    cmd = ['verilator', '--xml-only', '--xml-output', ast_path, '-Wno-fatal', args.verilog_file]
-    if args.top_module:
-        cmd += ['--top-module', args.top_module]
+    # Use -v instead of --xml-only to handle multiple modules correctly
+    cmd = ['verilator', '--xml-only', '-v', args.verilog_file, '--xml-output', ast_path, '-Wno-fatal']
     print("Invoking Verilator...")
     try:
         subprocess.run(cmd, check=True, text=True, capture_output=True)
@@ -53,19 +130,27 @@ def main():
         sys.exit(f"Verilator error:\n{e.stderr}\n{e.stdout}")
 
     # --- Build Graph Hierarchy ---
-    print("Parsing AST and building graph hierarchy...")
+    print("Parsing AST and building graph hierarchy for all modules...")
     tree = ET.parse(ast_path)
     os.remove(ast_path)
     
     builder = GraphBuilder(verilog_code_lines=verilog_lines)
-    hierarchy = builder.build_from_xml_root(tree.getroot())
+    hierarchies = builder.build_from_xml_root(tree.getroot())
+    
+    if not hierarchies:
+        sys.exit("Error: No modules found in the Verilog file.")
 
     # --- Generate All DOT Files ---
     print("Generating all DOT files...")
-    dot_files = generate_all_dots(hierarchy, output_basename, args)
+    all_dot_files = {}
+    for hierarchy in hierarchies:
+        # Each module gets its own set of files, prefixed by the Verilog file's base name
+        module_output_basename = f"{base_name}_{hierarchy.name}"
+        dot_files = generate_all_dots(hierarchy, module_output_basename, args)
+        all_dot_files.update(dot_files)
 
     # --- Save and Render All Graphs ---
-    for dot_filename, dot_content in dot_files.items():
+    for dot_filename, dot_content in all_dot_files.items():
         base_dot_name = os.path.splitext(dot_filename)[0]
         
         dot_filepath = os.path.join(output_dir, dot_filename)
@@ -87,8 +172,25 @@ def main():
             sys.exit("Error: 'dot' (Graphviz) not found. Please install Graphviz.")
         except subprocess.CalledProcessError as e:
             sys.exit(f"Graphviz error:\n{e.stderr}\n{e.stdout}")
+            
+    # --- Create Viewer HTML ---
+    if args.format == 'svg':
+        # Determine the main architectural view to link to
+        top_module_name = ""
+        if args.top_module:
+            # Check if specified top module exists
+            if any(h.name == args.top_module for h in hierarchies):
+                top_module_name = args.top_module
+            else:
+                print(f"Warning: Top module '{args.top_module}' not found. Defaulting to first module.")
+                top_module_name = hierarchies[0].name
+        else:
+            top_module_name = hierarchies[0].name # Default to the first module
+        
+        arch_svg_basename = f"{base_name}_{top_module_name}_arch"
+        create_viewer_html(output_dir, arch_svg_basename)
 
-    print(f"\n✨ Process complete! Start by opening the main architectural view: {output_basename}_arch.{args.format}")
+    print(f"\n✨ Process complete! Open this file in your browser: {os.path.join(output_dir, 'viewer.html')}")
 
 
 if __name__ == '__main__':
