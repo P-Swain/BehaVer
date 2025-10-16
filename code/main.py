@@ -119,8 +119,8 @@ def main():
 
     with tempfile.NamedTemporaryFile(mode='w', suffix='.xml', delete=False) as tmp:
         ast_path = tmp.name
-    # Use -v instead of --xml-only to handle multiple modules correctly
-    cmd = ['verilator', '--xml-only', '-v', args.verilog_file, '--xml-output', ast_path, '-Wno-fatal']
+    # CORRECTED COMMAND: Removed the erroneous '-v' flag
+    cmd = ['verilator', '--xml-only', args.verilog_file, '--xml-output', ast_path, '-Wno-fatal']
     print("Invoking Verilator...")
     try:
         subprocess.run(cmd, check=True, text=True, capture_output=True)
