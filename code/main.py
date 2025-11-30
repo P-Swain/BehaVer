@@ -29,9 +29,7 @@ def create_viewer_html(output_dir, top_module_arch_svg_basename, module_views):
     <title>Interactive Verilog Graph Viewer</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body {{
-            font-family: 'Inter', sans-serif;
-        }}
+        body {{ font-family: 'Inter', sans-serif; }}
         #viewer-frame {{
             border: 1px solid #e2e8f0;
             border-radius: 0.5rem;
@@ -43,7 +41,7 @@ def create_viewer_html(output_dir, top_module_arch_svg_basename, module_views):
 
     <header class="mb-4">
         <h1 class="text-2xl font-bold text-slate-900">Verilog Design Explorer</h1>
-        <p class="text-slate-600">Click on a component in the architectural view to drill down into its detailed implementation.</p>
+        <p class="text-slate-600">Click on a component to drill down. Use the dropdown to jump to modules.</p>
     </header>
 
     <div id="navigation-bar" class="flex items-center flex-wrap gap-4 bg-white p-3 rounded-lg shadow-sm mb-4 border border-slate-200">
@@ -74,25 +72,41 @@ def create_viewer_html(output_dir, top_module_arch_svg_basename, module_views):
         const homeButton = document.getElementById('home-button');
         const moduleSelector = document.getElementById('module-selector');
         
+        // The default top module
         const architecturalViewSrc = '{top_module_arch_svg_basename}.svg';
 
         function setView(src) {{
-            if (src) {{
-                viewerFrame.src = src;
-                currentViewLabel.textContent = src;
-                if (moduleSelector.value !== src) {{
-                    moduleSelector.value = src;
-                }}
-            }} else {{
-                 viewerFrame.src = 'about:blank';
-                 currentViewLabel.textContent = 'No SVG loaded. Please generate graphs first.';
+            if (!src) return;
+            
+            // Update Iframe
+            viewerFrame.src = src;
+            currentViewLabel.textContent = src;
+            
+            // Sync Dropdown
+            if (moduleSelector.value !== src) {{
+                moduleSelector.value = src;
             }}
+
+            // Update URL without reloading (for copy-pasting)
+            const newUrl = new URL(window.location);
+            newUrl.searchParams.set('file', src);
+            window.history.replaceState(null, '', newUrl);
         }}
 
+        // --- Initialization ---
         document.addEventListener('DOMContentLoaded', () => {{
-            setView(architecturalViewSrc);
+            // Check if there is a file parameter in the URL (e.g. viewer.html?file=my_mod.svg)
+            const urlParams = new URLSearchParams(window.location.search);
+            const fileParam = urlParams.get('file');
+            
+            if (fileParam) {{
+                setView(fileParam);
+            }} else {{
+                setView(architecturalViewSrc);
+            }}
         }});
 
+        // --- Event Listeners ---
         homeButton.addEventListener('click', () => {{
             setView(architecturalViewSrc);
         }});
@@ -144,7 +158,6 @@ def main():
 
     include_flags = [f"-I{d}" for d in include_dirs]
 
-    # Debug mode: fix path to inspect XML
     ast_path = "debug_ast.xml"
     
     cmd = ['verilator', '--xml-only'] + include_flags + args.verilog_files + ['--xml-output', ast_path, '-Wno-fatal']
@@ -171,7 +184,6 @@ def main():
     all_dot_files = {}
     for hierarchy in hierarchies:
         module_output_basename = f"{base_name}_{hierarchy.name}"
-        # CHANGED: Passed 'base_name' as link_prefix
         dot_files = generate_all_dots(hierarchy, module_output_basename, base_name, args)
         all_dot_files.update(dot_files)
 

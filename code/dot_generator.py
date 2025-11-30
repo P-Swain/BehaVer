@@ -34,28 +34,32 @@ def _generate_single_dot(graph: Graph, output_basename: str, link_prefix: str, a
         # Link for Cluster Drill-down (Behavioral)
         if is_arch and link_map and nid in link_map:
             link_key = link_map[nid]['link']
-            attrs['URL'] = f'"{output_basename}_{link_key}.{args.format}"'
+            # NOTE: We point to viewer.html?file=... so the parent frame reloads and syncs the dropdown
+            target_svg = f"{output_basename}_{link_key}.{args.format}"
+            attrs['URL'] = f'"viewer.html?file={target_svg}"'
+            attrs['target'] = '"_top"'
             attrs['tooltip'] = '"Click to see details"'
         
-        # Link for Module Navigation (Structural) - NEW
-        # We check the graph's node_metadata for 'module_link'
+        # Link for Module Navigation (Structural)
         meta = graph.node_metadata.get(nid, {})
         if 'module_link' in meta:
             target_mod = meta['module_link']
-            # Construct URL: {prefix}_{module_name}_arch.svg
-            attrs['URL'] = f'"{link_prefix}_{target_mod}_arch.{args.format}"'
+            target_svg = f"{link_prefix}_{target_mod}_arch.{args.format}"
+            
+            # Using query param navigation to keep the UI wrapper alive
+            attrs['URL'] = f'"viewer.html?file={target_svg}"'
             attrs['target'] = '"_top"'
+            
             attrs['style'] = '"filled,bold"'
-            attrs['fillcolor'] = '"#e6f3ff"' # Light blue background for modules
+            attrs['fillcolor'] = '"#e6f3ff"' 
             attrs['tooltip'] = f'"Go to module: {target_mod}"'
 
         return ",".join(f"{k}={quote_attr(v)}" for k, v in attrs.items())
 
-    # Updated Graph Attributes for Decluttering
     lines = [f"digraph {graph.name} {{", 
              "  rankdir=TB; splines=ortho;",
              "  graph [ranksep=2.0, nodesep=1.5];", # Increased spacing
-             "  node [shape=box, style=filled, fillcolor=white, fontsize=12, fontname=\"Arial\"];" # Cleaner nodes
+             "  node [shape=box, style=filled, fillcolor=white, fontsize=12, fontname=\"Arial\"];"
             ]
 
     for i, cl in enumerate(graph.clusters):
@@ -67,7 +71,13 @@ def _generate_single_dot(graph: Graph, output_basename: str, link_prefix: str, a
         lines.append("  }")
 
     for s, d, lbl in graph.cfg_edges:
-        attr = f' [xlabel="{lbl}"]' if lbl else ""
+        # Decluttering: label="" hides text.
+        # Tooltips: penwidth=3.0 makes the wire thick enough to hit with mouse.
+        if lbl:
+             # Standard tooltip + edgetooltip for safety
+             attr = f' [tooltip="{lbl}", label="", penwidth=3.0, arrowsize=1.5]' 
+        else:
+             attr = ""
         lines.append(f"  n{s} -> n{d}{attr};")
 
     lines.append("}")
@@ -80,7 +90,6 @@ def generate_all_dots(hierarchy: DesignHierarchy, output_basename: str, link_pre
     dot_files = {}
     arch_graph = hierarchy.architectural_graph
 
-    # Pass link_prefix (base_name) to generate correct URLs
     arch_filename = f"{output_basename}_arch.dot"
     dot_files[arch_filename] = _generate_single_dot(arch_graph, output_basename, link_prefix, args, is_arch=True)
 
