@@ -19,7 +19,7 @@ def create_viewer_html(output_dir, top_module_arch_svg_basename, module_views):
     options_html = ""
     for module in module_views:
         # Create an <option> tag for each module
-        options_html += f'          <option value="{module["file_base"]}.svg">{module["name"]}</option>\\n'
+        options_html += f'          <option value="{module["file_base"]}.svg">{module["name"]}</option>\n'
 
     html_content = f"""
 <!DOCTYPE html>
@@ -52,7 +52,6 @@ def create_viewer_html(output_dir, top_module_arch_svg_basename, module_views):
             Home (Top Module)
         </button>
 
-        <!-- New Dropdown for Module Selection -->
         <div class="flex items-center gap-2">
             <label for="module-selector" class="font-semibold text-slate-700">Select Module:</label>
             <select id="module-selector" class="bg-white border border-slate-300 rounded-md py-2 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500">
@@ -117,7 +116,7 @@ def create_viewer_html(output_dir, top_module_arch_svg_basename, module_views):
 
 def main():
     p = argparse.ArgumentParser(description="Generate linked, multi-level CFG/DFG from Verilog")
-    p.add_argument('verilog_file', help="Verilog source file")
+    p.add_argument('verilog_files', nargs='+', help="Verilog source files (one or more)")
     p.add_argument('-t', '--top', dest='top_module', help="Top-level module name for the main viewer.")
     p.add_argument('-o', '--output', dest='output_dir', help="Output directory for generated files.")
     p.add_argument('--format', choices=['svg', 'png', 'dot', 'pdf'], default='svg', help="Output format. Use svg for interactive links.")
@@ -126,7 +125,7 @@ def main():
     args = p.parse_args()
 
     # --- Setup Output ---
-    base_name = os.path.splitext(os.path.basename(args.verilog_file))[0]
+    base_name = os.path.splitext(os.path.basename(args.verilog_files[0]))[0]
     if args.output_dir:
         output_dir = args.output_dir
     else:
@@ -138,22 +137,38 @@ def main():
         print(f"Created output directory: {output_dir}")
 
     # --- Run Verilator ---
-    try:
-        with open(args.verilog_file, 'r') as f:
-            verilog_lines = f.readlines()
-    except FileNotFoundError:
-        sys.exit(f"Error: Cannot open Verilog file '{args.verilog_file}'")
+    verilog_lines = []
+    include_dirs = set()
+    
+    for v_file in args.verilog_files:
+        # Collect directory for -I flag
+        abs_path = os.path.abspath(v_file)
+        include_dirs.add(os.path.dirname(abs_path))
+        
+        try:
+            with open(v_file, 'r') as f:
+                verilog_lines.extend(f.readlines())
+        except FileNotFoundError:
+            sys.exit(f"Error: Cannot open Verilog file '{v_file}'")
+
+    # Build include flags for Verilator
+    include_flags = [f"-I{d}" for d in include_dirs]
 
     with tempfile.NamedTemporaryFile(mode='w', suffix='.xml', delete=False) as tmp:
         ast_path = tmp.name
-    cmd = ['verilator', '--xml-only', args.verilog_file, '--xml-output', ast_path, '-Wno-fatal']
-    print("Invoking Verilator...")
+    
+    # Pass include flags to command
+    cmd = ['verilator', '--xml-only'] + include_flags + args.verilog_files + ['--xml-output', ast_path, '-Wno-fatal']
+    
+    print(f"Invoking Verilator on {len(args.verilog_files)} files...")
+    # print("Command:", " ".join(cmd)) # Uncomment for debugging
+    
     try:
         subprocess.run(cmd, check=True, text=True, capture_output=True)
     except FileNotFoundError:
         sys.exit("Error: 'verilator' not found. Please install Verilator.")
     except subprocess.CalledProcessError as e:
-        sys.exit(f"Verilator error:\\n{e.stderr}\\n{e.stdout}")
+        sys.exit(f"Verilator error:\n{e.stderr}\n{e.stdout}")
 
     # --- Build Graph Hierarchy ---
     print("Parsing AST and building graph hierarchy for all modules...")
@@ -164,7 +179,7 @@ def main():
     hierarchies = builder.build_from_xml_root(tree.getroot())
     
     if not hierarchies:
-        sys.exit("Error: No modules found in the Verilog file.")
+        sys.exit("Error: No modules found in the Verilog files.")
 
     # --- Generate All DOT Files ---
     print("Generating all DOT files...")
@@ -191,12 +206,12 @@ def main():
             cmd_dot = ['dot', f'-K{args.layout_engine}', f'-T{args.format}', '-o', output_filepath]
             res = subprocess.run(cmd_dot, input=dot_content, text=True, check=True, capture_output=True)
             if res.stderr:
-                print(f"Graphviz warnings:\\n{res.stderr}")
+                print(f"Graphviz warnings:\n{res.stderr}")
             print(f"✅ Wrote Output -> {output_filepath}")
         except FileNotFoundError:
             sys.exit("Error: 'dot' (Graphviz) not found. Please install Graphviz.")
         except subprocess.CalledProcessError as e:
-            sys.exit(f"Graphviz error:\\n{e.stderr}\\n{e.stdout}")
+            sys.exit(f"Graphviz error:\n{e.stderr}\n{e.stdout}")
             
     # --- Create Viewer HTML ---
     if args.format == 'svg':
@@ -222,7 +237,7 @@ def main():
         # Pass all necessary info to the HTML generation function
         create_viewer_html(output_dir, top_module_arch_svg_basename, module_views)
 
-    print(f"\\n✨ Process complete! Open this file in your browser: {os.path.join(output_dir, 'viewer.html')}")
+    print(f"\n✨ Process complete! Open this file in your browser: {os.path.join(output_dir, 'viewer.html')}")
 
 
 if __name__ == '__main__':
