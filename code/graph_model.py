@@ -25,6 +25,9 @@ class Graph:
         # Cluster State
         self.clusters = []
         self.cluster_stack = []
+        
+        # Node Metadata (New: for storing links and types)
+        self.node_metadata = {} 
 
         # CFG Data
         self.cfg_nodes = []
@@ -67,6 +70,12 @@ class Graph:
             "metadata": metadata or {} # For storing type, links, etc.
         })
         return idx
+    
+    def add_node_metadata(self, node_id, key, value):
+        """Stores metadata (like links) for a specific node."""
+        if node_id not in self.node_metadata:
+            self.node_metadata[node_id] = {}
+        self.node_metadata[node_id][key] = value
 
     def add_cfg_node(self, label, cluster_id=None):
         """Adds a new node to the CFG."""

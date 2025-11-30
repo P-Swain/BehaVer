@@ -18,7 +18,6 @@ def create_viewer_html(output_dir, top_module_arch_svg_basename, module_views):
     
     options_html = ""
     for module in module_views:
-        # Create an <option> tag for each module
         options_html += f'          <option value="{module["file_base"]}.svg">{module["name"]}</option>\n'
 
     html_content = f"""
@@ -75,14 +74,12 @@ def create_viewer_html(output_dir, top_module_arch_svg_basename, module_views):
         const homeButton = document.getElementById('home-button');
         const moduleSelector = document.getElementById('module-selector');
         
-        // This is the main architectural view (top module or first module)
         const architecturalViewSrc = '{top_module_arch_svg_basename}.svg';
 
         function setView(src) {{
             if (src) {{
                 viewerFrame.src = src;
                 currentViewLabel.textContent = src;
-                // Sync dropdown with the current view
                 if (moduleSelector.value !== src) {{
                     moduleSelector.value = src;
                 }}
@@ -92,12 +89,10 @@ def create_viewer_html(output_dir, top_module_arch_svg_basename, module_views):
             }}
         }}
 
-        // --- Initialization ---
         document.addEventListener('DOMContentLoaded', () => {{
             setView(architecturalViewSrc);
         }});
 
-        // --- Event Listeners ---
         homeButton.addEventListener('click', () => {{
             setView(architecturalViewSrc);
         }});
@@ -124,7 +119,6 @@ def main():
     p.add_argument('--no-inter-cluster-dfg', action='store_true', help="Hide DFG edges across procedural boundaries")
     args = p.parse_args()
 
-    # --- Setup Output ---
     base_name = os.path.splitext(os.path.basename(args.verilog_files[0]))[0]
     if args.output_dir:
         output_dir = args.output_dir
@@ -136,28 +130,23 @@ def main():
         os.makedirs(output_dir)
         print(f"Created output directory: {output_dir}")
 
-    # --- Run Verilator ---
     verilog_lines = []
     include_dirs = set()
     
     for v_file in args.verilog_files:
-        # Collect directory for -I flag
         abs_path = os.path.abspath(v_file)
         include_dirs.add(os.path.dirname(abs_path))
-        
         try:
             with open(v_file, 'r') as f:
                 verilog_lines.extend(f.readlines())
         except FileNotFoundError:
             sys.exit(f"Error: Cannot open Verilog file '{v_file}'")
 
-    # Build include flags for Verilator
     include_flags = [f"-I{d}" for d in include_dirs]
 
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.xml', delete=False) as tmp:
-        ast_path = "debug_ast.xml"
+    # Debug mode: fix path to inspect XML
+    ast_path = "debug_ast.xml"
     
-    # Pass include flags to command
     cmd = ['verilator', '--xml-only'] + include_flags + args.verilog_files + ['--xml-output', ast_path, '-Wno-fatal']
     
     print(f"Invoking Verilator on {len(args.verilog_files)} files...")
@@ -169,10 +158,8 @@ def main():
     except subprocess.CalledProcessError as e:
         sys.exit(f"Verilator error:\n{e.stderr}\n{e.stdout}")
 
-    # --- Build Graph Hierarchy ---
     print("Parsing AST and building graph hierarchy for all modules...")
     tree = ET.parse(ast_path)
-    # os.remove(ast_path)
     
     builder = GraphBuilder(verilog_code_lines=verilog_lines)
     hierarchies = builder.build_from_xml_root(tree.getroot())
@@ -180,15 +167,14 @@ def main():
     if not hierarchies:
         sys.exit("Error: No modules found in the Verilog files.")
 
-    # --- Generate All DOT Files ---
     print("Generating all DOT files...")
     all_dot_files = {}
     for hierarchy in hierarchies:
         module_output_basename = f"{base_name}_{hierarchy.name}"
-        dot_files = generate_all_dots(hierarchy, module_output_basename, args)
+        # CHANGED: Passed 'base_name' as link_prefix
+        dot_files = generate_all_dots(hierarchy, module_output_basename, base_name, args)
         all_dot_files.update(dot_files)
 
-    # --- Save and Render All Graphs ---
     for dot_filename, dot_content in all_dot_files.items():
         base_dot_name = os.path.splitext(dot_filename)[0]
         
@@ -212,9 +198,7 @@ def main():
         except subprocess.CalledProcessError as e:
             sys.exit(f"Graphviz error:\n{e.stderr}\n{e.stdout}")
             
-    # --- Create Viewer HTML ---
     if args.format == 'svg':
-        # Determine the main architectural view for the "Home" button
         top_module_name = ""
         if args.top_module and any(h.name == args.top_module for h in hierarchies):
             top_module_name = args.top_module
@@ -225,7 +209,6 @@ def main():
         
         top_module_arch_svg_basename = f"{base_name}_{top_module_name}_arch"
 
-        # Create a list of all module architectural views for the dropdown
         module_views = []
         for h in hierarchies:
             module_views.append({
@@ -233,7 +216,6 @@ def main():
                 'file_base': f"{base_name}_{h.name}_arch"
             })
 
-        # Pass all necessary info to the HTML generation function
         create_viewer_html(output_dir, top_module_arch_svg_basename, module_views)
 
     print(f"\n✨ Process complete! Open this file in your browser: {os.path.join(output_dir, 'viewer.html')}")

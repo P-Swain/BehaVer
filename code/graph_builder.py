@@ -3,7 +3,7 @@
 import xml.etree.ElementTree as ET
 from graph_model import Graph, DesignHierarchy
 from ast_utils import expr_to_str, collect_var_names
-from block_classifier import classify_block
+from block_classifier import classify_block 
 
 class GraphBuilder:
     """Traverses an XML AST to build a hierarchical, multi-level graph."""
@@ -11,7 +11,7 @@ class GraphBuilder:
         self.verilog_code_lines = verilog_code_lines if verilog_code_lines else []
         self.hierarchy = None
         self.current_graph = None 
-        self.signal_registry = {} # Maps signal_name -> list of node_ids
+        self.signal_registry = {} 
         self.operationmap = {
             'add': 'ADD', 'sub': 'SUB', 'and': 'AND', 'or': 'OR', 'xor': 'XOR',
             'mul': 'MUL', 'div': 'DIV', 'mod': 'MOD', 'sll': 'SLL', 'srl': 'SRL',
@@ -32,17 +32,14 @@ class GraphBuilder:
                 self.current_graph = self.hierarchy.architectural_graph
                 self.current_graph.reset_ssa_state()
                 
-                # Reset signal registry for each new module
                 self.signal_registry = {}
                 
-                # Add a top-level cluster for the module itself
                 arch_cluster_id = self.current_graph.add_cluster(f"Module: {module_name}", color="lightblue")
                 self.current_graph.cluster_stack.append(arch_cluster_id)
                 
                 for item in module:
                     self._traverse_architectural_view(item)
                 
-                # Connect the instances based on shared signals
                 self._resolve_connections()
                 
                 self.current_graph.cluster_stack.pop()
@@ -50,32 +47,25 @@ class GraphBuilder:
         return hierarchies
 
     def _traverse_architectural_view(self, elem):
-        """
-        Traverses the AST to build the high-level architectural view.
-        """
         if elem is None: return
         tag = elem.tag.lower()
 
-        # --- 1. Handle Behavioral Blocks (always, initial) ---
+        # Handle Procedural Blocks
         if tag in ('always', 'initial', 'always_comb', 'always_ff', 'always_latch'):
             classification = classify_block(elem)
             arch_graph = self.hierarchy.architectural_graph
             parent_cluster = arch_graph.cluster_stack[-1] if arch_graph.cluster_stack else None
 
-            # Add Node
             arch_node_label = f"{classification}\\n({tag})"
             arch_node_id = arch_graph.add_cfg_node(arch_node_label, cluster_id=parent_cluster)
             
-            # Create Sub-graph Link
             sub_graph_key = f"cluster_{len(self.hierarchy.sub_graphs)}"
             if parent_cluster is not None and arch_graph.clusters:
                  arch_graph.clusters[parent_cluster].setdefault('metadata', {})[arch_node_id] = {'link': sub_graph_key}
 
-            # Build Detailed Graph
             detailed_graph = Graph(name=sub_graph_key)
             self.hierarchy.add_sub_graph(sub_graph_key, detailed_graph)
             
-            # Switch Context
             original_graph = self.current_graph
             self.current_graph = detailed_graph
             
@@ -93,53 +83,42 @@ class GraphBuilder:
             self.current_graph.cluster_stack.pop()
             self.current_graph = original_graph
 
-        # --- 2. Handle Structural Instances (Modules) ---
-        # FIXED: Your XML uses 'instance', not 'inst'. I check for both now.
+        # Handle Module Instances (Updated for Linking)
         elif tag in ('inst', 'instance'):
             inst_name = elem.get('name')
             mod_type = elem.get('defName')
             
-            # Add Node
             arch_graph = self.hierarchy.architectural_graph
             parent_cluster = arch_graph.cluster_stack[-1] if arch_graph.cluster_stack else None
             
             label = f"{inst_name}\n({mod_type})"
-            # Use a box shape for instances to distinguish them from logic blocks
-            # (Note: dot_generator styles might need updates if you want specific colors, but this works)
             node_id = arch_graph.add_cfg_node(label, cluster_id=parent_cluster)
             
-            # Map Ports to Signals for Wiring
+            # Store the link to the module definition!
+            arch_graph.add_node_metadata(node_id, "module_link", mod_type)
+            
             for port in elem.findall('port'):
                 conn = port.find('varref')
                 if conn is not None:
                     signal_name = conn.get('name')
-                    
                     if signal_name not in self.signal_registry:
                         self.signal_registry[signal_name] = []
                     self.signal_registry[signal_name].append(node_id)
 
     def _resolve_connections(self):
-        """Draws lines between nodes that share the same wire."""
         graph = self.hierarchy.architectural_graph
+        IGNORED = {'clk', 'rst', 'clk_i', 'rst_i', 'clock', 'reset'}
         
-        # Filter out common global signals to prevent "hairballs"
-        IGNORED_SIGNALS = {'clk', 'rst', 'clk_i', 'rst_i', 'clock', 'reset'}
-
         for signal, nodes in self.signal_registry.items():
-            if len(nodes) < 2:
+            if len(nodes) < 2 or signal in IGNORED:
                 continue 
-            if signal in IGNORED_SIGNALS:
-                continue
-
-            # Connect nodes in a chain
+            
             for i in range(len(nodes) - 1):
                 src = nodes[i]
                 dst = nodes[i+1]
-                # Label the edge with the wire name so you see what connects them
                 graph.add_cfg_edge(src, dst, label=signal)
 
     def _traverse_detailed_view(self, elem):
-        """Standard traversal for detailed behavioral graphs."""
         if elem is None: return None
         graph = self.current_graph
         tag, loc = elem.tag.lower(), elem.get('loc')
