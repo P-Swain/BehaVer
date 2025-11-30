@@ -3,14 +3,15 @@
 import xml.etree.ElementTree as ET
 from graph_model import Graph, DesignHierarchy
 from ast_utils import expr_to_str, collect_var_names
-from block_classifier import classify_block # Import the new classifier
+from block_classifier import classify_block
 
 class GraphBuilder:
     """Traverses an XML AST to build a hierarchical, multi-level graph."""
     def __init__(self, verilog_code_lines=None):
         self.verilog_code_lines = verilog_code_lines if verilog_code_lines else []
         self.hierarchy = None
-        self.current_graph = None # The graph we are currently building on
+        self.current_graph = None 
+        self.signal_registry = {} # Maps signal_name -> list of node_ids
         self.operationmap = {
             'add': 'ADD', 'sub': 'SUB', 'and': 'AND', 'or': 'OR', 'xor': 'XOR',
             'mul': 'MUL', 'div': 'DIV', 'mod': 'MOD', 'sll': 'SLL', 'srl': 'SRL',
@@ -31,13 +32,18 @@ class GraphBuilder:
                 self.current_graph = self.hierarchy.architectural_graph
                 self.current_graph.reset_ssa_state()
                 
-                # Add a top-level cluster for the module itself in the architectural view
+                # Reset signal registry for each new module
+                self.signal_registry = {}
+                
+                # Add a top-level cluster for the module itself
                 arch_cluster_id = self.current_graph.add_cluster(f"Module: {module_name}", color="lightblue")
                 self.current_graph.cluster_stack.append(arch_cluster_id)
                 
                 for item in module:
-                    # We only create high-level nodes in the architectural graph
                     self._traverse_architectural_view(item)
+                
+                # Connect the instances based on shared signals
+                self._resolve_connections()
                 
                 self.current_graph.cluster_stack.pop()
                 hierarchies.append(self.hierarchy)
@@ -46,59 +52,94 @@ class GraphBuilder:
     def _traverse_architectural_view(self, elem):
         """
         Traverses the AST to build the high-level architectural view.
-        When it finds a procedural block, it creates a detailed sub-graph.
         """
         if elem is None: return
         tag = elem.tag.lower()
 
-        if tag in ('always', 'initial'):
+        # --- 1. Handle Behavioral Blocks (always, initial) ---
+        if tag in ('always', 'initial', 'always_comb', 'always_ff', 'always_latch'):
             classification = classify_block(elem)
             arch_graph = self.hierarchy.architectural_graph
             parent_cluster = arch_graph.cluster_stack[-1] if arch_graph.cluster_stack else None
 
-            # Add a single node to the architectural graph for this block
+            # Add Node
             arch_node_label = f"{classification}\\n({tag})"
             arch_node_id = arch_graph.add_cfg_node(arch_node_label, cluster_id=parent_cluster)
             
-            # Create a unique key for the sub-graph
+            # Create Sub-graph Link
             sub_graph_key = f"cluster_{len(self.hierarchy.sub_graphs)}"
             if parent_cluster is not None and arch_graph.clusters:
                  arch_graph.clusters[parent_cluster].setdefault('metadata', {})[arch_node_id] = {'link': sub_graph_key}
 
-
-            # Now, create and build the detailed graph for this block
+            # Build Detailed Graph
             detailed_graph = Graph(name=sub_graph_key)
             self.hierarchy.add_sub_graph(sub_graph_key, detailed_graph)
             
-            # Temporarily switch context to build the detailed graph
+            # Switch Context
             original_graph = self.current_graph
             self.current_graph = detailed_graph
             
-            # Create a cluster in the detailed graph
             detail_cluster_id = self.current_graph.add_cluster(f"Details: {classification}", color="lightgoldenrodyellow")
             self.current_graph.cluster_stack.append(detail_cluster_id)
             
-            # Use the original detailed traversal logic for the block's children
             entry_node = self.current_graph.add_cfg_node(f"Enter {tag}", cluster_id=detail_cluster_id)
             last_node = entry_node
             for child in elem:
                 child_node = self._traverse_detailed_view(child)
                 if child_node is not None:
                     self.current_graph.add_cfg_edge(last_node, child_node)
-                    # This logic might need refinement for complex CFGs to find the true 'last node'
-                    # For a simple sequence, this is okay.
                     last_node = child_node
             
             self.current_graph.cluster_stack.pop()
-            
-            # Restore context to the architectural graph
             self.current_graph = original_graph
 
+        # --- 2. Handle Structural Instances (Modules) ---
+        # FIXED: Your XML uses 'instance', not 'inst'. I check for both now.
+        elif tag in ('inst', 'instance'):
+            inst_name = elem.get('name')
+            mod_type = elem.get('defName')
+            
+            # Add Node
+            arch_graph = self.hierarchy.architectural_graph
+            parent_cluster = arch_graph.cluster_stack[-1] if arch_graph.cluster_stack else None
+            
+            label = f"{inst_name}\n({mod_type})"
+            # Use a box shape for instances to distinguish them from logic blocks
+            # (Note: dot_generator styles might need updates if you want specific colors, but this works)
+            node_id = arch_graph.add_cfg_node(label, cluster_id=parent_cluster)
+            
+            # Map Ports to Signals for Wiring
+            for port in elem.findall('port'):
+                conn = port.find('varref')
+                if conn is not None:
+                    signal_name = conn.get('name')
+                    
+                    if signal_name not in self.signal_registry:
+                        self.signal_registry[signal_name] = []
+                    self.signal_registry[signal_name].append(node_id)
+
+    def _resolve_connections(self):
+        """Draws lines between nodes that share the same wire."""
+        graph = self.hierarchy.architectural_graph
+        
+        # Filter out common global signals to prevent "hairballs"
+        IGNORED_SIGNALS = {'clk', 'rst', 'clk_i', 'rst_i', 'clock', 'reset'}
+
+        for signal, nodes in self.signal_registry.items():
+            if len(nodes) < 2:
+                continue 
+            if signal in IGNORED_SIGNALS:
+                continue
+
+            # Connect nodes in a chain
+            for i in range(len(nodes) - 1):
+                src = nodes[i]
+                dst = nodes[i+1]
+                # Label the edge with the wire name so you see what connects them
+                graph.add_cfg_edge(src, dst, label=signal)
+
     def _traverse_detailed_view(self, elem):
-        """
-        This is the original traversal logic, now used to build the
-        detailed sub-graphs for each procedural block.
-        """
+        """Standard traversal for detailed behavioral graphs."""
         if elem is None: return None
         graph = self.current_graph
         tag, loc = elem.tag.lower(), elem.get('loc')
@@ -117,7 +158,7 @@ class GraphBuilder:
             if not nodes: return None
             for i in range(len(nodes) - 1):
                 graph.add_cfg_edge(nodes[i], nodes[i+1])
-            return nodes[0] # Return the entry point of the block
+            return nodes[0]
 
         if tag in ('if','ifstmt'):
             cond = elem.find('cond') or next((c for c in elem if c.tag.lower() in self.operationmap or c.tag.lower() in ('varref','const')), None)
@@ -126,7 +167,6 @@ class GraphBuilder:
             node_if = record(graph.add_cfg_node(lbl, cluster_id=parent_cluster))
             graph.cfg_node_uses[node_if] = used
             
-            # Placeholder for the merge point after if/else
             node_end = graph.add_cfg_node('EndIf', cluster_id=parent_cluster)
             
             then_elem = elem.find('then')
@@ -134,9 +174,7 @@ class GraphBuilder:
                 then_node = self._traverse_detailed_view(then_elem)
                 if then_node:
                     graph.add_cfg_edge(node_if, then_node, 'True')
-                    # Need to find the last node of the 'then' block to connect to end
-                    # This is a simplification; complex blocks need a more robust way to find the exit node.
-                    graph.add_cfg_edge(then_node, node_end) # Simplified connection
+                    graph.add_cfg_edge(then_node, node_end)
             else:
                 graph.add_cfg_edge(node_if, node_end, 'True')
             
@@ -145,36 +183,25 @@ class GraphBuilder:
                 else_node = self._traverse_detailed_view(else_elem)
                 if else_node:
                     graph.add_cfg_edge(node_if, else_node, 'False')
-                    graph.add_cfg_edge(else_node, node_end) # Simplified connection
+                    graph.add_cfg_edge(else_node, node_end)
             else:
                 graph.add_cfg_edge(node_if, node_end, 'False')
-            
-            # The entry point to the if-structure is the condition node itself
-            # The caller will connect the previous node to this one.
-            # We return the start of this structure.
             return node_if
         
         if tag in ('assign','blockingassign','nonblockingassign'):
-            # The XML structure can vary, find lhs and rhs robustly
             lhs_elem = elem.find('.//varref')
             rhs_elems = [c for c in elem if c is not lhs_elem]
-            
             lhs_str = expr_to_str(lhs_elem)
             rhs_str = expr_to_str(rhs_elems[0]) if rhs_elems else ""
-
             op = '<=' if 'nonblocking' in tag else '='
             lbl = f"{lhs_str} {op} {rhs_str}"
-            nid = record(graph.add_cfg_node(lbl, cluster_id=parent_cluster))
-            return nid
+            return record(graph.add_cfg_node(lbl, cluster_id=parent_cluster))
         
-        # Fallback for other unhandled tags by just creating a label
-        unhandled_label = f"Node: {tag}"
-        nid = record(graph.add_cfg_node(unhandled_label, cluster_id=parent_cluster))
-        
+        nid = record(graph.add_cfg_node(f"Node: {tag}", cluster_id=parent_cluster))
         last = nid
         for c in elem:
             nd = self._traverse_detailed_view(c)
             if nd is not None:
                 graph.add_cfg_edge(last, nd)
-                last = nd # This can create long chains, might need refinement.
+                last = nd
         return nid

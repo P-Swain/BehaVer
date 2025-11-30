@@ -155,13 +155,12 @@ def main():
     include_flags = [f"-I{d}" for d in include_dirs]
 
     with tempfile.NamedTemporaryFile(mode='w', suffix='.xml', delete=False) as tmp:
-        ast_path = tmp.name
+        ast_path = "debug_ast.xml"
     
     # Pass include flags to command
     cmd = ['verilator', '--xml-only'] + include_flags + args.verilog_files + ['--xml-output', ast_path, '-Wno-fatal']
     
     print(f"Invoking Verilator on {len(args.verilog_files)} files...")
-    # print("Command:", " ".join(cmd)) # Uncomment for debugging
     
     try:
         subprocess.run(cmd, check=True, text=True, capture_output=True)
@@ -173,7 +172,7 @@ def main():
     # --- Build Graph Hierarchy ---
     print("Parsing AST and building graph hierarchy for all modules...")
     tree = ET.parse(ast_path)
-    os.remove(ast_path)
+    # os.remove(ast_path)
     
     builder = GraphBuilder(verilog_code_lines=verilog_lines)
     hierarchies = builder.build_from_xml_root(tree.getroot())
