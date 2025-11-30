@@ -32,7 +32,6 @@ class GraphBuilder:
                 self.current_graph = self.hierarchy.architectural_graph
                 self.current_graph.reset_ssa_state()
                 
-                # Reset signal registry for each new module
                 self.signal_registry = {}
                 
                 arch_cluster_id = self.current_graph.add_cluster(f"Module: {module_name}", color="lightblue")
@@ -51,8 +50,8 @@ class GraphBuilder:
         if elem is None: return
         tag = elem.tag.lower()
 
-        # Handle Procedural Blocks
-        if tag in ('always', 'initial', 'always_comb', 'always_ff', 'always_latch'):
+        # --- 1. Handle Procedural Blocks & Assignments ---
+        if tag in ('always', 'initial', 'always_comb', 'always_ff', 'always_latch', 'assign', 'contassign'):
             classification = classify_block(elem)
             arch_graph = self.hierarchy.architectural_graph
             parent_cluster = arch_graph.cluster_stack[-1] if arch_graph.cluster_stack else None
@@ -60,6 +59,10 @@ class GraphBuilder:
             arch_node_label = f"{classification}\\n({tag})"
             arch_node_id = arch_graph.add_cfg_node(arch_node_label, cluster_id=parent_cluster)
             
+            # Scan internals to find connections
+            self._scan_block_for_signals(elem, arch_node_id)
+
+            # Link to detailed sub-graph
             sub_graph_key = f"cluster_{len(self.hierarchy.sub_graphs)}"
             if parent_cluster is not None and arch_graph.clusters:
                  arch_graph.clusters[parent_cluster].setdefault('metadata', {})[arch_node_id] = {'link': sub_graph_key}
@@ -84,7 +87,7 @@ class GraphBuilder:
             self.current_graph.cluster_stack.pop()
             self.current_graph = original_graph
 
-        # Handle Module Instances
+        # --- 2. Handle Module Instances ---
         elif tag in ('inst', 'instance'):
             inst_name = elem.get('name')
             mod_type = elem.get('defName')
@@ -98,19 +101,54 @@ class GraphBuilder:
             arch_graph.add_node_metadata(node_id, "module_link", mod_type)
             
             for port in elem.findall('port'):
-                conn = port.find('varref')
-                if conn is not None:
+                # Normalize direction
+                raw_dir = port.get('direction', 'inout')
+                direction = 'inout'
+                if raw_dir in ('input', 'in'): direction = 'in'
+                elif raw_dir in ('output', 'out'): direction = 'out'
+
+                for conn in port.findall('.//varref'):
                     signal_name = conn.get('name')
-                    direction = port.get('direction') # Fetch direction: 'in', 'out', 'inout'
-                    
-                    if signal_name not in self.signal_registry:
-                        self.signal_registry[signal_name] = []
-                    
-                    # CHANGED: Store the direction along with the node ID
-                    self.signal_registry[signal_name].append({'id': node_id, 'dir': direction})
+                    if signal_name:
+                        if signal_name not in self.signal_registry:
+                            self.signal_registry[signal_name] = []
+                        self.signal_registry[signal_name].append({'id': node_id, 'dir': direction})
+
+    def _scan_block_for_signals(self, block_elem, node_id):
+        """Recursively scans a logic block to find signal reads/writes."""
+        ASSIGN_TAGS = ('assign', 'contassign', 'blockingassign', 'nonblockingassign')
+        
+        def recursive_scan(elem, current_mode='read'):
+            if elem is None: return
+            tag = elem.tag.lower()
+
+            # If assignment, LHS is write, RHS is read
+            if tag in ASSIGN_TAGS:
+                children = list(elem)
+                if children:
+                    recursive_scan(children[0], current_mode='write')
+                    for child in children[1:]:
+                        recursive_scan(child, current_mode='read')
+                return
+
+            if tag == 'varref':
+                name = elem.get('name')
+                if name:
+                    direction = 'out' if current_mode == 'write' else 'in'
+                    if name not in self.signal_registry:
+                        self.signal_registry[name] = []
+                    entry = {'id': node_id, 'dir': direction}
+                    if entry not in self.signal_registry[name]:
+                        self.signal_registry[name].append(entry)
+                return
+
+            for child in elem:
+                recursive_scan(child, current_mode)
+
+        recursive_scan(block_elem)
 
     def _resolve_connections(self):
-        """Draws directed edges based on signal drivers (outputs) and receivers (inputs)."""
+        """Draws directed edges based on signal drivers and receivers."""
         graph = self.hierarchy.architectural_graph
         IGNORED = {'clk', 'rst', 'clk_i', 'rst_i', 'clock', 'reset'}
         
@@ -118,30 +156,20 @@ class GraphBuilder:
             if len(ports) < 2 or signal in IGNORED:
                 continue 
             
-            # Separate ports by direction
             drivers = [p['id'] for p in ports if p['dir'] == 'out']
             receivers = [p['id'] for p in ports if p['dir'] == 'in']
             
-            # Scenario 1: We have clear Drivers -> Receivers
             if drivers and receivers:
                 for src in drivers:
                     for dst in receivers:
-                        graph.add_cfg_edge(src, dst, label=signal)
-            
-            # Scenario 2: No clear driver (e.g., top-level input feeding two modules)
-            # In this case, we chain them just to show connectivity, but it's less ideal.
+                        if src != dst:
+                            graph.add_cfg_edge(src, dst, label=signal)
+            # Fallback for undefined directions (like in procedural blocks where everything defaults to 'read' unless explicit assignment)
             elif not drivers and len(ports) > 1:
-                 nodes = [p['id'] for p in ports]
+                 nodes = sorted(list({p['id'] for p in ports}))
                  for i in range(len(nodes) - 1):
-                     graph.add_cfg_edge(nodes[i], nodes[i+1], label=signal)
-                     
-            # Scenario 3: Multiple drivers (uncommon/error), treat like Scenario 1 where everyone drives everyone (mesh)
-            elif drivers and not receivers and len(drivers) > 1:
-                # Rare case, just chain them
-                nodes = [p['id'] for p in ports]
-                for i in range(len(nodes) - 1):
-                     graph.add_cfg_edge(nodes[i], nodes[i+1], label=signal)
-
+                     if nodes[i] != nodes[i+1]:
+                        graph.add_cfg_edge(nodes[i], nodes[i+1], label=signal)
 
     def _traverse_detailed_view(self, elem):
         if elem is None: return None
