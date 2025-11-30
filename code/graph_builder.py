@@ -32,6 +32,7 @@ class GraphBuilder:
                 self.current_graph = self.hierarchy.architectural_graph
                 self.current_graph.reset_ssa_state()
                 
+                # Reset signal registry for each new module
                 self.signal_registry = {}
                 
                 arch_cluster_id = self.current_graph.add_cluster(f"Module: {module_name}", color="lightblue")
@@ -83,7 +84,7 @@ class GraphBuilder:
             self.current_graph.cluster_stack.pop()
             self.current_graph = original_graph
 
-        # Handle Module Instances (Updated for Linking)
+        # Handle Module Instances
         elif tag in ('inst', 'instance'):
             inst_name = elem.get('name')
             mod_type = elem.get('defName')
@@ -94,29 +95,53 @@ class GraphBuilder:
             label = f"{inst_name}\n({mod_type})"
             node_id = arch_graph.add_cfg_node(label, cluster_id=parent_cluster)
             
-            # Store the link to the module definition!
             arch_graph.add_node_metadata(node_id, "module_link", mod_type)
             
             for port in elem.findall('port'):
                 conn = port.find('varref')
                 if conn is not None:
                     signal_name = conn.get('name')
+                    direction = port.get('direction') # Fetch direction: 'in', 'out', 'inout'
+                    
                     if signal_name not in self.signal_registry:
                         self.signal_registry[signal_name] = []
-                    self.signal_registry[signal_name].append(node_id)
+                    
+                    # CHANGED: Store the direction along with the node ID
+                    self.signal_registry[signal_name].append({'id': node_id, 'dir': direction})
 
     def _resolve_connections(self):
+        """Draws directed edges based on signal drivers (outputs) and receivers (inputs)."""
         graph = self.hierarchy.architectural_graph
         IGNORED = {'clk', 'rst', 'clk_i', 'rst_i', 'clock', 'reset'}
         
-        for signal, nodes in self.signal_registry.items():
-            if len(nodes) < 2 or signal in IGNORED:
+        for signal, ports in self.signal_registry.items():
+            if len(ports) < 2 or signal in IGNORED:
                 continue 
             
-            for i in range(len(nodes) - 1):
-                src = nodes[i]
-                dst = nodes[i+1]
-                graph.add_cfg_edge(src, dst, label=signal)
+            # Separate ports by direction
+            drivers = [p['id'] for p in ports if p['dir'] == 'out']
+            receivers = [p['id'] for p in ports if p['dir'] == 'in']
+            
+            # Scenario 1: We have clear Drivers -> Receivers
+            if drivers and receivers:
+                for src in drivers:
+                    for dst in receivers:
+                        graph.add_cfg_edge(src, dst, label=signal)
+            
+            # Scenario 2: No clear driver (e.g., top-level input feeding two modules)
+            # In this case, we chain them just to show connectivity, but it's less ideal.
+            elif not drivers and len(ports) > 1:
+                 nodes = [p['id'] for p in ports]
+                 for i in range(len(nodes) - 1):
+                     graph.add_cfg_edge(nodes[i], nodes[i+1], label=signal)
+                     
+            # Scenario 3: Multiple drivers (uncommon/error), treat like Scenario 1 where everyone drives everyone (mesh)
+            elif drivers and not receivers and len(drivers) > 1:
+                # Rare case, just chain them
+                nodes = [p['id'] for p in ports]
+                for i in range(len(nodes) - 1):
+                     graph.add_cfg_edge(nodes[i], nodes[i+1], label=signal)
+
 
     def _traverse_detailed_view(self, elem):
         if elem is None: return None
