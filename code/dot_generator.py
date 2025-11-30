@@ -34,7 +34,7 @@ def _generate_single_dot(graph: Graph, output_basename: str, link_prefix: str, a
         # Link for Cluster Drill-down (Behavioral)
         if is_arch and link_map and nid in link_map:
             link_key = link_map[nid]['link']
-            # NOTE: We point to viewer.html?file=... so the parent frame reloads and syncs the dropdown
+            # Navigate to the sub-graph via the viewer wrapper
             target_svg = f"{output_basename}_{link_key}.{args.format}"
             attrs['URL'] = f'"viewer.html?file={target_svg}"'
             attrs['target'] = '"_top"'
@@ -46,20 +46,21 @@ def _generate_single_dot(graph: Graph, output_basename: str, link_prefix: str, a
             target_mod = meta['module_link']
             target_svg = f"{link_prefix}_{target_mod}_arch.{args.format}"
             
-            # Using query param navigation to keep the UI wrapper alive
+            # Use query param navigation to keep the interface wrapper
             attrs['URL'] = f'"viewer.html?file={target_svg}"'
             attrs['target'] = '"_top"'
             
             attrs['style'] = '"filled,bold"'
-            attrs['fillcolor'] = '"#e6f3ff"' 
+            attrs['fillcolor'] = '"#e6f3ff"'
             attrs['tooltip'] = f'"Go to module: {target_mod}"'
 
         return ",".join(f"{k}={quote_attr(v)}" for k, v in attrs.items())
 
     lines = [f"digraph {graph.name} {{", 
              "  rankdir=TB; splines=ortho;",
-             "  graph [ranksep=2.0, nodesep=1.5];", # Increased spacing
-             "  node [shape=box, style=filled, fillcolor=white, fontsize=12, fontname=\"Arial\"];"
+             "  graph [ranksep=2.0, nodesep=1.5];", 
+             "  node [shape=box, style=filled, fillcolor=white, fontsize=12, fontname=\"Arial\"];",
+             "  edge [fontname=\"Arial\", fontsize=10];"
             ]
 
     for i, cl in enumerate(graph.clusters):
@@ -71,13 +72,15 @@ def _generate_single_dot(graph: Graph, output_basename: str, link_prefix: str, a
         lines.append("  }")
 
     for s, d, lbl in graph.cfg_edges:
-        # Decluttering: label="" hides text.
-        # Tooltips: penwidth=3.0 makes the wire thick enough to hit with mouse.
         if lbl:
-             # Standard tooltip + edgetooltip for safety
-             attr = f' [tooltip="{lbl}", label="", penwidth=3.0, arrowsize=1.5]' 
+            safe_lbl = lbl.replace('"', '\\"')
+            # FIX: Use 'xlabel' instead of 'label'. This prevents the ortho engine from crashing.
+            # We keep fontcolor transparent so it remains decluttered.
+            # 'tooltip' on the edge allows hovering the line itself.
+            attr = (f' [xlabel="{safe_lbl}", fontcolor="#00000000", '
+                    f'tooltip="{safe_lbl}", penwidth=3.0, arrowsize=1.2]')
         else:
-             attr = ""
+            attr = ""
         lines.append(f"  n{s} -> n{d}{attr};")
 
     lines.append("}")
