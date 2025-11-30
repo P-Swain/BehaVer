@@ -26,45 +26,124 @@ def create_viewer_html(output_dir, top_module_arch_svg_basename, module_views):
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Interactive Verilog Graph Viewer</title>
+    <title>BehaVer Design Explorer</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {{
+            theme: {{
+                extend: {{
+                    fontFamily: {{
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    }},
+                    colors: {{
+                        brand: {{
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        }}
+                    }}
+                }}
+            }}
+        }}
+    </script>
     <style>
-        body {{ font-family: 'Inter', sans-serif; }}
-        #viewer-frame {{
-            border: 1px solid #e2e8f0;
-            border-radius: 0.5rem;
-            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {{
+            width: 8px;
+            height: 8px;
+        }}
+        ::-webkit-scrollbar-track {{
+            background: #f1f5f9; 
+        }}
+        ::-webkit-scrollbar-thumb {{
+            background: #cbd5e1; 
+            border-radius: 4px;
+        }}
+        ::-webkit-scrollbar-thumb:hover {{
+            background: #94a3b8; 
+        }}
+        
+        .glass-panel {{
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(226, 232, 240, 0.8);
         }}
     </style>
 </head>
-<body class="bg-slate-50 text-slate-800 flex flex-col h-screen p-4 md:p-6">
+<body class="bg-slate-100 text-slate-800 flex flex-col h-screen overflow-hidden">
 
-    <header class="mb-4">
-        <h1 class="text-2xl font-bold text-slate-900">Verilog Design Explorer</h1>
-        <p class="text-slate-600">Click on a component to drill down. Use the dropdown to jump to modules.</p>
-    </header>
+    <nav class="glass-panel shadow-sm z-10 relative">
+        <div class="max-w-8xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16 items-center">
+                <div class="flex items-center gap-3">
+                    <div class="bg-gradient-to-br from-brand-500 to-brand-700 text-white p-2 rounded-lg shadow-lg shadow-brand-500/30">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                        </svg>
+                    </div>
+                    <div>
+                        <h1 class="text-xl font-extrabold tracking-tight text-slate-900 leading-tight">BehaVer</h1>
+                        <p class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Design Explorer</p>
+                    </div>
+                </div>
 
-    <div id="navigation-bar" class="flex items-center flex-wrap gap-4 bg-white p-3 rounded-lg shadow-sm mb-4 border border-slate-200">
-        <button id="home-button" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-md transition-colors duration-200">
-            Home (Top Module)
-        </button>
+                <div class="flex items-center gap-3">
+                    <button id="home-button" class="group flex items-center gap-2 bg-white border border-slate-200 hover:border-brand-500 hover:text-brand-600 text-slate-600 px-4 py-2 rounded-lg transition-all duration-200 shadow-sm font-semibold text-sm">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                        </svg>
+                        Top Module
+                    </button>
 
-        <div class="flex items-center gap-2">
-            <label for="module-selector" class="font-semibold text-slate-700">Select Module:</label>
-            <select id="module-selector" class="bg-white border border-slate-300 rounded-md py-2 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <div class="h-6 w-px bg-slate-300 mx-1"></div>
+
+                    <div class="relative group">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <svg class="h-4 w-4 text-slate-400 group-focus-within:text-brand-500 transition-colors" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7" />
+                            </svg>
+                        </div>
+                        <select id="module-selector" class="appearance-none bg-white border border-slate-200 text-slate-700 text-sm rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 block w-64 pl-10 p-2.5 shadow-sm font-medium transition-all cursor-pointer hover:border-slate-300">
 {options_html}
-            </select>
+                        </select>
+                        <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                             <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
+    </nav>
 
-        <div class="flex items-center gap-2 ml-auto">
-            <span class="font-semibold text-slate-700">Current View:</span>
-            <span id="current-view-label" class="bg-slate-100 text-slate-800 font-mono text-sm px-3 py-1 rounded-md"></span>
+    <main class="flex-1 flex flex-col p-4 sm:p-6 overflow-hidden">
+        <div class="flex-1 bg-white rounded-xl shadow-xl shadow-slate-200/60 border border-slate-200 flex flex-col overflow-hidden relative group">
+            
+            <div class="h-10 border-b border-slate-100 flex items-center justify-between px-4 bg-slate-50/50 backdrop-blur-sm">
+                <div class="flex items-center gap-2">
+                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Viewing:</span>
+                    <span id="current-view-label" class="bg-white border border-slate-200 text-brand-700 font-mono text-[11px] px-2 py-0.5 rounded shadow-sm">...</span>
+                </div>
+                <div class="flex gap-1.5 opacity-60">
+                    <div class="w-2.5 h-2.5 rounded-full bg-slate-300"></div>
+                    <div class="w-2.5 h-2.5 rounded-full bg-slate-300"></div>
+                    <div class="w-2.5 h-2.5 rounded-full bg-slate-300"></div>
+                </div>
+            </div>
+
+            <div class="flex-1 relative bg-slate-50/30 w-full h-full">
+                <iframe id="viewer-frame" class="absolute inset-0 w-full h-full" src=""></iframe>
+            </div>
         </div>
-    </div>
-
-    <main class="flex-1 bg-white rounded-lg overflow-hidden">
-        <iframe id="viewer-frame" class="w-full h-full" src=""></iframe>
     </main>
+
+    <footer class="py-3 text-center text-slate-400 text-[10px] font-medium uppercase tracking-widest">
+        Generated by <span class="text-brand-500 font-bold">BehaVer</span>
+    </footer>
 
     <script>
         const viewerFrame = document.getElementById('viewer-frame');
