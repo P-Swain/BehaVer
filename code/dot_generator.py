@@ -1,7 +1,6 @@
 # File: dot_generator.py
 
 import re
-import html
 from graph_model import DesignHierarchy, Graph
 
 STYLE_MAP = [
@@ -16,7 +15,6 @@ STYLE_MAP = [
 ]
 
 def _generate_single_dot(graph: Graph, output_basename: str, link_prefix: str, args, is_arch=False) -> str:
-    """Generates the DOT graph description for a single Graph object."""
     def quote_attr(val):
         if isinstance(val, str) and val.startswith('"') and val.endswith('"'):
             return val
@@ -31,36 +29,31 @@ def _generate_single_dot(graph: Graph, output_basename: str, link_prefix: str, a
                 attrs.update(**style_kwargs)
                 break
         
-        # Link for Cluster Drill-down (Behavioral)
         if is_arch and link_map and nid in link_map:
             link_key = link_map[nid]['link']
-            # Navigate to the sub-graph via the viewer wrapper
             target_svg = f"{output_basename}_{link_key}.{args.format}"
             attrs['URL'] = f'"viewer.html?file={target_svg}"'
             attrs['target'] = '"_top"'
             attrs['tooltip'] = '"Click to see details"'
         
-        # Link for Module Navigation (Structural)
         meta = graph.node_metadata.get(nid, {})
         if 'module_link' in meta:
             target_mod = meta['module_link']
             target_svg = f"{link_prefix}_{target_mod}_arch.{args.format}"
-            
-            # Use query param navigation to keep the interface wrapper
             attrs['URL'] = f'"viewer.html?file={target_svg}"'
             attrs['target'] = '"_top"'
-            
             attrs['style'] = '"filled,bold"'
             attrs['fillcolor'] = '"#e6f3ff"'
             attrs['tooltip'] = f'"Go to module: {target_mod}"'
 
         return ",".join(f"{k}={quote_attr(v)}" for k, v in attrs.items())
 
+    # Uses ortho for block-diagram look
     lines = [f"digraph {graph.name} {{", 
-             "  rankdir=TB; splines=ortho;",
+             "  rankdir=TB; splines=ortho;", 
              "  graph [ranksep=2.0, nodesep=1.5];", 
              "  node [shape=box, style=filled, fillcolor=white, fontsize=12, fontname=\"Arial\"];",
-             "  edge [fontname=\"Arial\", fontsize=10];"
+             "  edge [fontname=\"Arial\", fontsize=10, color=\"#555555\"];"
             ]
 
     for i, cl in enumerate(graph.clusters):
@@ -71,25 +64,40 @@ def _generate_single_dot(graph: Graph, output_basename: str, link_prefix: str, a
             lines.append(f"    n{nid} [{get_node_attributes(nid, link_map=node_link_map if is_arch else None)}];")
         lines.append("  }")
 
-    for s, d, lbl in graph.cfg_edges:
-        if lbl:
-            safe_lbl = lbl.replace('"', '\\"')
-            # FIX: Use 'xlabel' instead of 'label'. This prevents the ortho engine from crashing.
-            # We keep fontcolor transparent so it remains decluttered.
-            # 'tooltip' on the edge allows hovering the line itself.
-            attr = (f' [xlabel="{safe_lbl}", fontcolor="#00000000", '
-                    f'tooltip="{safe_lbl}", penwidth=3.0, arrowsize=1.2]')
+    for s, d, lbl_data in graph.cfg_edges:
+        if not lbl_data:
+             lines.append(f"  n{s} -> n{d};")
+             continue
+
+        # Handle Bus (List of signals)
+        if isinstance(lbl_data, list):
+            count = len(lbl_data)
+            full_list_str = "\\n".join(lbl_data) # Use literal \n for DOT strings
+            safe_tooltip = full_list_str.replace('"', '\\"')
+            
+            if count > 3:
+                hitbox_text = f"Bus: {count} signals"
+            else:
+                hitbox_text = full_list_str
+
+            safe_xlabel = hitbox_text.replace('"', '\\"').replace('\n', '\\n')
+            
+            # Thick line for Bus, transparent xlabel for hit area
+            attr = (f' [xlabel="{safe_xlabel}", fontcolor="#00000000", '
+                    f'tooltip="{safe_tooltip}", penwidth=4.0, arrowsize=1.5, color="#333333"]')
+        
+        # Handle Single Wire
         else:
-            attr = ""
+            safe_lbl = str(lbl_data).replace('"', '\\"')
+            attr = (f' [xlabel="{safe_lbl}", fontcolor="#00000000", '
+                    f'tooltip="{safe_lbl}", penwidth=2.0, arrowsize=1.0]')
+            
         lines.append(f"  n{s} -> n{d}{attr};")
 
     lines.append("}")
     return "\n".join(lines)
 
 def generate_all_dots(hierarchy: DesignHierarchy, output_basename: str, link_prefix: str, args) -> dict:
-    """
-    Generates all DOT files for the entire hierarchy.
-    """
     dot_files = {}
     arch_graph = hierarchy.architectural_graph
 

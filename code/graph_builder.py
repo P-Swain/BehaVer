@@ -6,7 +6,6 @@ from ast_utils import expr_to_str, collect_var_names
 from block_classifier import classify_block 
 
 class GraphBuilder:
-    """Traverses an XML AST to build a hierarchical, multi-level graph."""
     def __init__(self, verilog_code_lines=None):
         self.verilog_code_lines = verilog_code_lines if verilog_code_lines else []
         self.hierarchy = None
@@ -22,7 +21,6 @@ class GraphBuilder:
         }
 
     def build_from_xml_root(self, root: ET.Element) -> list[DesignHierarchy]:
-        """Starts the graph building process from the XML root."""
         hierarchies = []
         netlist = root.find('netlist')
         if netlist is not None:
@@ -31,7 +29,6 @@ class GraphBuilder:
                 self.hierarchy = DesignHierarchy(module_name)
                 self.current_graph = self.hierarchy.architectural_graph
                 self.current_graph.reset_ssa_state()
-                
                 self.signal_registry = {}
                 
                 arch_cluster_id = self.current_graph.add_cluster(f"Module: {module_name}", color="lightblue")
@@ -50,7 +47,7 @@ class GraphBuilder:
         if elem is None: return
         tag = elem.tag.lower()
 
-        # --- 1. Handle Procedural Blocks & Assignments ---
+        # Procedural Blocks
         if tag in ('always', 'initial', 'always_comb', 'always_ff', 'always_latch', 'assign', 'contassign'):
             classification = classify_block(elem)
             arch_graph = self.hierarchy.architectural_graph
@@ -59,10 +56,9 @@ class GraphBuilder:
             arch_node_label = f"{classification}\\n({tag})"
             arch_node_id = arch_graph.add_cfg_node(arch_node_label, cluster_id=parent_cluster)
             
-            # Scan internals to find connections
+            # Scan block for signals to enable wiring
             self._scan_block_for_signals(elem, arch_node_id)
 
-            # Link to detailed sub-graph
             sub_graph_key = f"cluster_{len(self.hierarchy.sub_graphs)}"
             if parent_cluster is not None and arch_graph.clusters:
                  arch_graph.clusters[parent_cluster].setdefault('metadata', {})[arch_node_id] = {'link': sub_graph_key}
@@ -87,7 +83,7 @@ class GraphBuilder:
             self.current_graph.cluster_stack.pop()
             self.current_graph = original_graph
 
-        # --- 2. Handle Module Instances ---
+        # Module Instances
         elif tag in ('inst', 'instance'):
             inst_name = elem.get('name')
             mod_type = elem.get('defName')
@@ -101,7 +97,6 @@ class GraphBuilder:
             arch_graph.add_node_metadata(node_id, "module_link", mod_type)
             
             for port in elem.findall('port'):
-                # Normalize direction
                 raw_dir = port.get('direction', 'inout')
                 direction = 'inout'
                 if raw_dir in ('input', 'in'): direction = 'in'
@@ -115,14 +110,12 @@ class GraphBuilder:
                         self.signal_registry[signal_name].append({'id': node_id, 'dir': direction})
 
     def _scan_block_for_signals(self, block_elem, node_id):
-        """Recursively scans a logic block to find signal reads/writes."""
         ASSIGN_TAGS = ('assign', 'contassign', 'blockingassign', 'nonblockingassign')
         
         def recursive_scan(elem, current_mode='read'):
             if elem is None: return
             tag = elem.tag.lower()
 
-            # If assignment, LHS is write, RHS is read
             if tag in ASSIGN_TAGS:
                 children = list(elem)
                 if children:
@@ -134,6 +127,7 @@ class GraphBuilder:
             if tag == 'varref':
                 name = elem.get('name')
                 if name:
+                    # In an always block, LHS is write, RHS is read
                     direction = 'out' if current_mode == 'write' else 'in'
                     if name not in self.signal_registry:
                         self.signal_registry[name] = []
@@ -148,10 +142,10 @@ class GraphBuilder:
         recursive_scan(block_elem)
 
     def _resolve_connections(self):
-        """Draws directed edges based on signal drivers and receivers."""
         graph = self.hierarchy.architectural_graph
         IGNORED = {'clk', 'rst', 'clk_i', 'rst_i', 'clock', 'reset'}
-        
+        connections = {} # (src, dst) -> [signals]
+
         for signal, ports in self.signal_registry.items():
             if len(ports) < 2 or signal in IGNORED:
                 continue 
@@ -159,17 +153,23 @@ class GraphBuilder:
             drivers = [p['id'] for p in ports if p['dir'] == 'out']
             receivers = [p['id'] for p in ports if p['dir'] == 'in']
             
+            def add_conn(s, d, sig):
+                if s == d: return
+                if (s, d) not in connections: connections[(s, d)] = []
+                if sig not in connections[(s, d)]: connections[(s, d)].append(sig)
+
             if drivers and receivers:
                 for src in drivers:
                     for dst in receivers:
-                        if src != dst:
-                            graph.add_cfg_edge(src, dst, label=signal)
-            # Fallback for undefined directions (like in procedural blocks where everything defaults to 'read' unless explicit assignment)
+                        add_conn(src, dst, signal)
             elif not drivers and len(ports) > 1:
                  nodes = sorted(list({p['id'] for p in ports}))
                  for i in range(len(nodes) - 1):
-                     if nodes[i] != nodes[i+1]:
-                        graph.add_cfg_edge(nodes[i], nodes[i+1], label=signal)
+                     add_conn(nodes[i], nodes[i+1], signal)
+        
+        # Draw grouped edges
+        for (src, dst), signal_list in connections.items():
+            graph.add_cfg_edge(src, dst, label=signal_list)
 
     def _traverse_detailed_view(self, elem):
         if elem is None: return None
@@ -198,7 +198,6 @@ class GraphBuilder:
             lbl = f"if ({expr_to_str(cond)})"
             node_if = record(graph.add_cfg_node(lbl, cluster_id=parent_cluster))
             graph.cfg_node_uses[node_if] = used
-            
             node_end = graph.add_cfg_node('EndIf', cluster_id=parent_cluster)
             
             then_elem = elem.find('then')
