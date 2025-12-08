@@ -37,6 +37,21 @@ def _generate_single_dot(graph: Graph, output_basename: str, link_prefix: str, a
             attrs['tooltip'] = '"Click to see details"'
         
         meta = graph.node_metadata.get(nid, {})
+        
+        # --- STYLING: Input/Output Port Groups ---
+        if meta.get('type') == 'port_group':
+            attrs['shape'] = 'folder' # Folder shape fits "group" concept
+            attrs['style'] = '"filled,bold"'
+            attrs['fillcolor'] = '"#2c3e50"' # Deep Blue/Black
+            attrs['fontcolor'] = '"white"'   # White Text
+            attrs['penwidth'] = '2'
+            
+            if 'content' in meta:
+                # Tooltip shows all signals in this bus
+                content = meta['content'].replace('"', '\\"')
+                attrs['tooltip'] = f'"{content}"'
+
+        # Styling for Module Instances
         if 'module_link' in meta:
             target_mod = meta['module_link']
             target_svg = f"{link_prefix}_{target_mod}_arch.{args.format}"
@@ -48,10 +63,9 @@ def _generate_single_dot(graph: Graph, output_basename: str, link_prefix: str, a
 
         return ",".join(f"{k}={quote_attr(v)}" for k, v in attrs.items())
 
-    # Uses ortho for block-diagram look
     lines = [f"digraph {graph.name} {{", 
              "  rankdir=TB; splines=ortho;", 
-             "  graph [ranksep=2.0, nodesep=1.5];", 
+             "  graph [ranksep=2.5, nodesep=2.0];", 
              "  node [shape=box, style=filled, fillcolor=white, fontsize=12, fontname=\"Arial\"];",
              "  edge [fontname=\"Arial\", fontsize=10, color=\"#555555\"];"
             ]
@@ -69,10 +83,9 @@ def _generate_single_dot(graph: Graph, output_basename: str, link_prefix: str, a
              lines.append(f"  n{s} -> n{d};")
              continue
 
-        # Handle Bus (List of signals)
         if isinstance(lbl_data, list):
             count = len(lbl_data)
-            full_list_str = "\\n".join(lbl_data) # Use literal \n for DOT strings
+            full_list_str = "\\n".join(lbl_data)
             safe_tooltip = full_list_str.replace('"', '\\"')
             
             if count > 3:
@@ -82,12 +95,11 @@ def _generate_single_dot(graph: Graph, output_basename: str, link_prefix: str, a
 
             safe_xlabel = hitbox_text.replace('"', '\\"').replace('\n', '\\n')
             
-            # Thick line for Bus, transparent xlabel for hit area
+            # Thick Bus Line
             attr = (f' [xlabel="{safe_xlabel}", fontcolor="#00000000", '
                     f'tooltip="{safe_tooltip}", penwidth=4.0, arrowsize=1.5, color="#333333"]')
-        
-        # Handle Single Wire
         else:
+            # Single Wire
             safe_lbl = str(lbl_data).replace('"', '\\"')
             attr = (f' [xlabel="{safe_lbl}", fontcolor="#00000000", '
                     f'tooltip="{safe_lbl}", penwidth=2.0, arrowsize=1.0]')
@@ -98,6 +110,9 @@ def _generate_single_dot(graph: Graph, output_basename: str, link_prefix: str, a
     return "\n".join(lines)
 
 def generate_all_dots(hierarchy: DesignHierarchy, output_basename: str, link_prefix: str, args) -> dict:
+    """
+    Generates all DOT files for the entire hierarchy.
+    """
     dot_files = {}
     arch_graph = hierarchy.architectural_graph
 

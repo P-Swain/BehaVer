@@ -9,7 +9,7 @@ import argparse
 import tempfile
 import shutil
 
-# Import our custom modules
+# Importing our custom modules
 from graph_builder import GraphBuilder
 from dot_generator import generate_all_dots
 
@@ -210,6 +210,9 @@ def main():
     p.add_argument('--format', choices=['svg', 'png', 'dot', 'pdf'], default='svg', help="Output format. Use svg for interactive links.")
     p.add_argument('--layout-engine', choices=['dot', 'fdp', 'neato', 'circo', 'twopi'], default='dot', help="Graphviz layout engine")
     p.add_argument('--no-inter-cluster-dfg', action='store_true', help="Hide DFG edges across procedural boundaries")
+    # NEW FLAG:
+    p.add_argument('--save-dot', action='store_true', help="Save intermediate DOT files even if generating other formats.")
+
     args = p.parse_args()
 
     base_name = os.path.splitext(os.path.basename(args.verilog_files[0]))[0]
@@ -268,13 +271,15 @@ def main():
 
     for dot_filename, dot_content in all_dot_files.items():
         base_dot_name = os.path.splitext(dot_filename)[0]
-        
         dot_filepath = os.path.join(output_dir, dot_filename)
-        if args.format == 'dot':
+        
+        # CHANGED: Save .dot file if format is 'dot' OR if --save-dot is requested
+        if args.format == 'dot' or args.save_dot:
             with open(dot_filepath, 'w') as f:
                 f.write(dot_content)
-            print(f"✅ Wrote DOT -> {dot_filepath}")
-            continue
+            if args.format == 'dot':
+                print(f"✅ Wrote DOT -> {dot_filepath}")
+                continue
 
         output_filepath = os.path.join(output_dir, f"{base_dot_name}.{args.format}")
         print(f"Rendering {output_filepath} via Graphviz (engine={args.layout_engine})...")

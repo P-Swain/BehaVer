@@ -6,11 +6,13 @@ from ast_utils import expr_to_str, collect_var_names
 from block_classifier import classify_block 
 
 class GraphBuilder:
+    """Traverses an XML AST to build a hierarchical, multi-level graph."""
     def __init__(self, verilog_code_lines=None):
         self.verilog_code_lines = verilog_code_lines if verilog_code_lines else []
         self.hierarchy = None
         self.current_graph = None 
         self.signal_registry = {} 
+        self.collected_ports = {'input': [], 'output': [], 'inout': []}
         self.operationmap = {
             'add': 'ADD', 'sub': 'SUB', 'and': 'AND', 'or': 'OR', 'xor': 'XOR',
             'mul': 'MUL', 'div': 'DIV', 'mod': 'MOD', 'sll': 'SLL', 'srl': 'SRL',
@@ -21,6 +23,7 @@ class GraphBuilder:
         }
 
     def build_from_xml_root(self, root: ET.Element) -> list[DesignHierarchy]:
+        """Starts the graph building process from the XML root."""
         hierarchies = []
         netlist = root.find('netlist')
         if netlist is not None:
@@ -29,7 +32,9 @@ class GraphBuilder:
                 self.hierarchy = DesignHierarchy(module_name)
                 self.current_graph = self.hierarchy.architectural_graph
                 self.current_graph.reset_ssa_state()
+                
                 self.signal_registry = {}
+                self.collected_ports = {'input': [], 'output': [], 'inout': []}
                 
                 arch_cluster_id = self.current_graph.add_cluster(f"Module: {module_name}", color="lightblue")
                 self.current_graph.cluster_stack.append(arch_cluster_id)
@@ -37,26 +42,83 @@ class GraphBuilder:
                 for item in module:
                     self._traverse_architectural_view(item)
                 
+                self._create_aggregated_port_nodes()
                 self._resolve_connections()
                 
                 self.current_graph.cluster_stack.pop()
                 hierarchies.append(self.hierarchy)
         return hierarchies
 
+    def _create_aggregated_port_nodes(self):
+        arch_graph = self.hierarchy.architectural_graph
+        parent_cluster = arch_graph.cluster_stack[-1] if arch_graph.cluster_stack else None
+
+        for direction, ports in self.collected_ports.items():
+            if not ports: continue
+            
+            label = f"{direction.capitalize()}s"
+            node_id = arch_graph.add_cfg_node(label, cluster_id=parent_cluster)
+            
+            full_list_str = "\n".join(ports)
+            arch_graph.add_node_metadata(node_id, "type", "port_group")
+            arch_graph.add_node_metadata(node_id, "content", full_list_str)
+
+            reg_dir = 'out' if direction == 'input' else 'in'
+            if direction == 'inout': reg_dir = 'inout'
+
+            for p_name in ports:
+                if p_name not in self.signal_registry:
+                    self.signal_registry[p_name] = []
+                self.signal_registry[p_name].append({'id': node_id, 'dir': reg_dir})
+
     def _traverse_architectural_view(self, elem):
         if elem is None: return
         tag = elem.tag.lower()
 
-        # Procedural Blocks
+        # --- 1. Handle Procedural Blocks ---
         if tag in ('always', 'initial', 'always_comb', 'always_ff', 'always_latch', 'assign', 'contassign'):
             classification = classify_block(elem)
+            
+            # --- SMART LABELING START ---
+            # Extract logic summary to display on the node (e.g. "a = b & c")
+            label_extra = ""
+            
+            # Helper to safely get name/value
+            def get_name(e):
+                if e.tag == 'varref': return e.get('name')
+                if e.tag == 'const': return e.get('name') # e.g. "1'h1"
+                if e.tag in self.operationmap: return self.operationmap[e.tag]
+                return "?"
+
+            if tag in ('assign', 'contassign'):
+                # In Verilator XML, contassign usually has RHS elements then LHS last.
+                if len(elem) >= 2:
+                    lhs = elem[-1]
+                    rhs = elem[0] # Simplified: grabbing first RHS operand
+                    lhs_str = get_name(lhs)
+                    rhs_str = get_name(rhs)
+                    
+                    if len(elem) > 2: rhs_str += "..." # Indicate complex logic
+                    label_extra = f"\\n{lhs_str} <= {rhs_str}"
+            
+            elif tag == 'initial':
+                # Detect simple parameter inits: initial -> assign -> (const, varref)
+                if len(elem) == 1 and elem[0].tag == 'assign':
+                    assign_block = elem[0]
+                    if len(assign_block) >= 2:
+                        rhs = assign_block[0]
+                        lhs = assign_block[-1]
+                        if rhs.tag == 'const':
+                             classification = "Init"
+                             label_extra = f"\\n{get_name(lhs)} = {get_name(rhs)}"
+            # --- SMART LABELING END ---
+
             arch_graph = self.hierarchy.architectural_graph
             parent_cluster = arch_graph.cluster_stack[-1] if arch_graph.cluster_stack else None
 
-            arch_node_label = f"{classification}\\n({tag})"
+            arch_node_label = f"{classification}{label_extra}"
             arch_node_id = arch_graph.add_cfg_node(arch_node_label, cluster_id=parent_cluster)
             
-            # Scan block for signals to enable wiring
             self._scan_block_for_signals(elem, arch_node_id)
 
             sub_graph_key = f"cluster_{len(self.hierarchy.sub_graphs)}"
@@ -83,7 +145,7 @@ class GraphBuilder:
             self.current_graph.cluster_stack.pop()
             self.current_graph = original_graph
 
-        # Module Instances
+        # --- 2. Handle Module Instances ---
         elif tag in ('inst', 'instance'):
             inst_name = elem.get('name')
             mod_type = elem.get('defName')
@@ -109,6 +171,16 @@ class GraphBuilder:
                             self.signal_registry[signal_name] = []
                         self.signal_registry[signal_name].append({'id': node_id, 'dir': direction})
 
+        # --- 3. Handle Module Ports ---
+        elif tag == 'var':
+            direction = elem.get('dir')
+            if direction: 
+                name = elem.get('name')
+                norm_dir = 'inout'
+                if direction in ('input', 'in'): norm_dir = 'input'
+                elif direction in ('output', 'out'): norm_dir = 'output'
+                self.collected_ports[norm_dir].append(name)
+
     def _scan_block_for_signals(self, block_elem, node_id):
         ASSIGN_TAGS = ('assign', 'contassign', 'blockingassign', 'nonblockingassign')
         
@@ -127,7 +199,6 @@ class GraphBuilder:
             if tag == 'varref':
                 name = elem.get('name')
                 if name:
-                    # In an always block, LHS is write, RHS is read
                     direction = 'out' if current_mode == 'write' else 'in'
                     if name not in self.signal_registry:
                         self.signal_registry[name] = []
@@ -144,7 +215,7 @@ class GraphBuilder:
     def _resolve_connections(self):
         graph = self.hierarchy.architectural_graph
         IGNORED = {'clk', 'rst', 'clk_i', 'rst_i', 'clock', 'reset'}
-        connections = {} # (src, dst) -> [signals]
+        connections = {}
 
         for signal, ports in self.signal_registry.items():
             if len(ports) < 2 or signal in IGNORED:
@@ -167,14 +238,14 @@ class GraphBuilder:
                  for i in range(len(nodes) - 1):
                      add_conn(nodes[i], nodes[i+1], signal)
         
-        # Draw grouped edges
         for (src, dst), signal_list in connections.items():
             graph.add_cfg_edge(src, dst, label=signal_list)
 
     def _traverse_detailed_view(self, elem):
         if elem is None: return None
         graph = self.current_graph
-        tag, loc = elem.tag.lower(), elem.get('loc')
+        tag = elem.tag.lower()
+        loc = elem.get('loc')
         line_num = int(loc.split(',')[1]) if loc and ',' in loc else None
         
         def record(node_id):
@@ -198,6 +269,7 @@ class GraphBuilder:
             lbl = f"if ({expr_to_str(cond)})"
             node_if = record(graph.add_cfg_node(lbl, cluster_id=parent_cluster))
             graph.cfg_node_uses[node_if] = used
+            
             node_end = graph.add_cfg_node('EndIf', cluster_id=parent_cluster)
             
             then_elem = elem.find('then')
