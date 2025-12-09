@@ -10,3 +10,5 @@ python3 code/main.py samples/trafficLight.v -o results/trafficLight
 python3 code/main.py samples/picorv32.v -o results/picorv32
 
 python3 code/main.py samples/riscv/*.v --top riscv_core
+
+python3 code/main.py samples/riscv/*.v --top riscv_core --save-dot
