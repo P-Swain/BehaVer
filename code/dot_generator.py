@@ -29,25 +29,30 @@ def _generate_single_dot(graph: Graph, output_basename: str, link_prefix: str, a
                 attrs.update(**style_kwargs)
                 break
         
+        # Get relative paths from args (defaulting to standard flat structure if not present)
+        viewer_path = getattr(args, 'viewer_rel_path', 'viewer.html')
+        graph_prefix = getattr(args, 'graphs_rel_path', '')
+
+        # Link for Cluster Drill-down (Behavioral)
         if is_arch and link_map and nid in link_map:
             link_key = link_map[nid]['link']
             target_svg = f"{output_basename}_{link_key}.{args.format}"
-            attrs['URL'] = f'"viewer.html?file={target_svg}"'
+            
+            # Navigate to ../viewer.html?file=graphs/target.svg
+            attrs['URL'] = f'"{viewer_path}?file={graph_prefix}{target_svg}"'
             attrs['target'] = '"_top"'
             attrs['tooltip'] = '"Click to see details"'
         
         meta = graph.node_metadata.get(nid, {})
         
-        # --- STYLING: Input/Output Port Groups ---
+        # Styling for Ports (Inputs/Outputs)
         if meta.get('type') == 'port_group':
-            attrs['shape'] = 'folder' # Folder shape fits "group" concept
+            attrs['shape'] = 'folder'
             attrs['style'] = '"filled,bold"'
-            attrs['fillcolor'] = '"#2c3e50"' # Deep Blue/Black
-            attrs['fontcolor'] = '"white"'   # White Text
+            attrs['fillcolor'] = '"#2c3e50"'
+            attrs['fontcolor'] = '"white"'
             attrs['penwidth'] = '2'
-            
             if 'content' in meta:
-                # Tooltip shows all signals in this bus
                 content = meta['content'].replace('"', '\\"')
                 attrs['tooltip'] = f'"{content}"'
 
@@ -55,7 +60,9 @@ def _generate_single_dot(graph: Graph, output_basename: str, link_prefix: str, a
         if 'module_link' in meta:
             target_mod = meta['module_link']
             target_svg = f"{link_prefix}_{target_mod}_arch.{args.format}"
-            attrs['URL'] = f'"viewer.html?file={target_svg}"'
+            
+            # Navigate to ../viewer.html?file=graphs/target.svg
+            attrs['URL'] = f'"{viewer_path}?file={graph_prefix}{target_svg}"'
             attrs['target'] = '"_top"'
             attrs['style'] = '"filled,bold"'
             attrs['fillcolor'] = '"#e6f3ff"'
@@ -88,18 +95,16 @@ def _generate_single_dot(graph: Graph, output_basename: str, link_prefix: str, a
             full_list_str = "\\n".join(lbl_data)
             safe_tooltip = full_list_str.replace('"', '\\"')
             
-            if count > 3:
+            if count > 5:
                 hitbox_text = f"Bus: {count} signals"
             else:
                 hitbox_text = full_list_str
 
             safe_xlabel = hitbox_text.replace('"', '\\"').replace('\n', '\\n')
             
-            # Thick Bus Line
             attr = (f' [xlabel="{safe_xlabel}", fontcolor="#00000000", '
                     f'tooltip="{safe_tooltip}", penwidth=4.0, arrowsize=1.5, color="#333333"]')
         else:
-            # Single Wire
             safe_lbl = str(lbl_data).replace('"', '\\"')
             attr = (f' [xlabel="{safe_lbl}", fontcolor="#00000000", '
                     f'tooltip="{safe_lbl}", penwidth=2.0, arrowsize=1.0]')
@@ -110,9 +115,6 @@ def _generate_single_dot(graph: Graph, output_basename: str, link_prefix: str, a
     return "\n".join(lines)
 
 def generate_all_dots(hierarchy: DesignHierarchy, output_basename: str, link_prefix: str, args) -> dict:
-    """
-    Generates all DOT files for the entire hierarchy.
-    """
     dot_files = {}
     arch_graph = hierarchy.architectural_graph
 
