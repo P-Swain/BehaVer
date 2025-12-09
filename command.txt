@@ -5,3 +5,8 @@ dot -Tpdf results/picorv32_cfg.dot  -o results/picorv32_cfg.pdf
 
 python3 code/main.py samples/trafficLight.v -o code/trafficLight_cfg.dot
 dot -Tpdf results/trafficLight_cfg.dot  -o results/trafficLight_cfg.pdf
+
+python3 code/main.py samples/trafficLight.v -o results/trafficLight
+python3 code/main.py samples/picorv32.v -o results/picorv32
+
+python3 code/main.py samples/riscv/*.v --top riscv_core

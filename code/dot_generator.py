@@ -1,102 +1,126 @@
 # File: dot_generator.py
 
 import re
-import html
-from graph_model import Graph # Import the data model
+from graph_model import DesignHierarchy, Graph
 
-# Visual-style map for Verilog constructs and data types
 STYLE_MAP = [
-    (r'^Module:',            dict(shape='folder',        style='filled', fillcolor='lightgray',    color='black')),
-    (r'^initial',            dict(shape='octagon',       style='filled', fillcolor='lightgoldenrod', color='black')),
-    (r'^always_comb',        dict(shape='box',           style='filled', fillcolor='lightcoral',     color='darkred')),
-    (r'^always_ff',          dict(shape='box',           style='filled', fillcolor='darkseagreen1',  color='darkgreen')),
-    (r'^Function:',          dict(shape='component',     style='filled', fillcolor='palegreen',      color='forestgreen')),
-    (r'^Task:',              dict(shape='parallelogram', style='filled', fillcolor='palegoldenrod',   color='saddlebrown')),
+    (r'FSM Controller',      dict(shape='Mdiamond',      style='filled', fillcolor='skyblue')),
+    (r'Counter',             dict(shape='doubleoctagon', style='filled', fillcolor='lightgreen')),
+    (r'Datapath',            dict(shape='octagon',       style='filled', fillcolor='lightcoral')),
+    (r'Sequential Logic',    dict(shape='box',           style='filled,rounded', fillcolor='darkseagreen1')),
+    (r'Combinational Logic', dict(shape='box',           style='filled,rounded', fillcolor='lightgoldenrod')),
     (r'^if ',                dict(shape='diamond',       style='filled', fillcolor='lightcyan',      color='teal')),
-    (r'^case',               dict(shape='hexagon',       style='filled', fillcolor='lightpink',      color='deeppink')),
-    (r'^(for|while|repeat)', dict(shape='ellipse',       style='filled', fillcolor='khaki',          color='darkgoldenrod')),
-    (r'LoopExit',            dict(shape='trapezium',     style='filled', fillcolor='gray90',         color='gray50')),
-    (r'^EndIf',              dict(shape='circle',        style='filled', fillcolor='white',         color='black')),
-    (r'^EndCase',            dict(shape='circle',        style='filled', fillcolor='white',         color='black')),
     (r'<=',                  dict(shape='box3d',         style='filled', fillcolor='lightcoral',     color='darkred')),
     (r'=',                   dict(shape='box3d',         style='filled', fillcolor='lightsalmon',    color='darkorange')),
-    (r'^input ',             dict(shape='circle',        style='filled', fillcolor='greenyellow',    color='green')),
-    (r'^output ',            dict(shape='doublecircle',  style='filled', fillcolor='khaki1',         color='orange')),
-    (r'^inout ',             dict(shape='triangle',      style='filled', fillcolor='peachpuff',      color='orangered')),
-    (r'^reg ',               dict(shape='oval',          style='filled', fillcolor='lavender',       color='rebeccapurple')),
-    (r'^wire ',              dict(shape='egg',           style='filled', fillcolor='white',          color='gray')),
-    (r'parameter',           dict(shape='note',          style='filled', fillcolor='honeydew',       color='darkolivegreen')),
-    (r'^OP:',                dict(shape='box',           style='filled', fillcolor='lightgreen',     color='darkgreen', fontcolor='black')),
 ]
 
-def generate_dot(graph: Graph, graph_name: str, args) -> str:
-    """Generates the DOT graph description from a Graph object."""
-    def get_node_attributes(nid):
-        """Determines DOT attributes for a CFG node based on its label and type."""
-        txt = graph.cfg_nodes[nid].replace('"', '\\"')
+def _generate_single_dot(graph: Graph, output_basename: str, link_prefix: str, args, is_arch=False) -> str:
+    def quote_attr(val):
+        if isinstance(val, str) and val.startswith('"') and val.endswith('"'):
+            return val
+        return f'"{val}"'
+
+    def get_node_attributes(nid, link_map=None):
+        txt = graph.cfg_nodes[nid].replace('"', '\\"').replace('\n', '\\n')
         attrs = {'label': f'"{txt}"'}
-        # Default attributes
-        attrs.update(shape='ellipse', style='filled', fillcolor='white', color='black')
-        # Apply STYLE_MAP
+
         for pat, style_kwargs in STYLE_MAP:
             if re.search(pat, txt):
                 attrs.update(**style_kwargs)
                 break
-        # SVG tooltips for source code and line number
-        if args.format == 'svg':
-            tips = []
-            if nid in graph.cfg_node_to_line_num:
-                tips.append(f"Line: {graph.cfg_node_to_line_num[nid]}")
-            if nid in graph.node_to_sourcetext:
-                tips.append(html.escape(graph.node_to_sourcetext[nid]))
-            if tips:
-                attrs['tooltip'] = '"' + "\\n".join(tips) + '"'
-        return ",".join(f"{k}={v}" for k, v in attrs.items())
+        
+        if is_arch and link_map and nid in link_map:
+            link_key = link_map[nid]['link']
+            target_svg = f"{output_basename}_{link_key}.{args.format}"
+            attrs['URL'] = f'"viewer.html?file={target_svg}"'
+            attrs['target'] = '"_top"'
+            attrs['tooltip'] = '"Click to see details"'
+        
+        meta = graph.node_metadata.get(nid, {})
+        
+        # --- STYLING: Input/Output Port Groups ---
+        if meta.get('type') == 'port_group':
+            attrs['shape'] = 'folder' # Folder shape fits "group" concept
+            attrs['style'] = '"filled,bold"'
+            attrs['fillcolor'] = '"#2c3e50"' # Deep Blue/Black
+            attrs['fontcolor'] = '"white"'   # White Text
+            attrs['penwidth'] = '2'
+            
+            if 'content' in meta:
+                # Tooltip shows all signals in this bus
+                content = meta['content'].replace('"', '\\"')
+                attrs['tooltip'] = f'"{content}"'
 
-    lines = ["digraph {} {{".format(graph_name), "  rankdir=LR; splines=ortho;"]
+        # Styling for Module Instances
+        if 'module_link' in meta:
+            target_mod = meta['module_link']
+            target_svg = f"{link_prefix}_{target_mod}_arch.{args.format}"
+            attrs['URL'] = f'"viewer.html?file={target_svg}"'
+            attrs['target'] = '"_top"'
+            attrs['style'] = '"filled,bold"'
+            attrs['fillcolor'] = '"#e6f3ff"'
+            attrs['tooltip'] = f'"Go to module: {target_mod}"'
 
-    if graph_name == 'CFG':
-        # Add clusters (modules, always blocks, etc.)
-        used_cfg_nodes = set()
-        for i, cl in enumerate(graph.clusters):
-            lines.append("  subgraph cluster_{} {{".format(i))
-            lines.append(f'    label="{cl["name"]}"; style=filled; color="{cl["color"]}";')
-            for nid in cl['node_ids']:
-                used_cfg_nodes.add(nid)
-                lines.append(f"    n{nid} [{get_node_attributes(nid)}];")
-            lines.append("  }")
+        return ",".join(f"{k}={quote_attr(v)}" for k, v in attrs.items())
 
-        # Add CFG nodes not part of any explicit cluster
-        for nid in range(len(graph.cfg_nodes)):
-            if nid in used_cfg_nodes: continue
-            lines.append(f"  n{nid} [{get_node_attributes(nid)}];")
+    lines = [f"digraph {graph.name} {{", 
+             "  rankdir=TB; splines=ortho;", 
+             "  graph [ranksep=2.5, nodesep=2.0];", 
+             "  node [shape=box, style=filled, fillcolor=white, fontsize=12, fontname=\"Arial\"];",
+             "  edge [fontname=\"Arial\", fontsize=10, color=\"#555555\"];"
+            ]
 
-        lines.append("  # CFG Edges")
-        for s, d, lbl in graph.cfg_edges:
-            attr = f' [xlabel="{lbl}"]' if lbl else ""
-            lines.append(f"  n{s} -> n{d}{attr};")
+    for i, cl in enumerate(graph.clusters):
+        lines.append(f"  subgraph cluster_{i} {{")
+        lines.append(f'    label="{cl["name"]}"; style=filled; color="{cl["color"]}";')
+        node_link_map = cl.get('metadata', {})
+        for nid in cl['node_ids']:
+            lines.append(f"    n{nid} [{get_node_attributes(nid, link_map=node_link_map if is_arch else None)}];")
+        lines.append("  }")
 
-        lines.append("  # DFG Edges (overlayed on CFG)")
-        defs_by_var_ssa = {}
-        for nid, var_ssa_name in graph.cfg_node_defs.items():
-            defs_by_var_ssa.setdefault(var_ssa_name, []).append(nid)
+    for s, d, lbl_data in graph.cfg_edges:
+        if not lbl_data:
+             lines.append(f"  n{s} -> n{d};")
+             continue
 
-        for uid, used_vars_ssa_set in graph.cfg_node_uses.items():
-            for v_ssa_name in used_vars_ssa_set:
-                for did in defs_by_var_ssa.get(v_ssa_name, []):
-                    if args.no_inter_cluster_dfg:
-                        cd = graph.node_to_cluster.get(did)
-                        cu = graph.node_to_cluster.get(uid)
-                        if cd is not None and cu is not None and cd != cu:
-                            continue
-                    lines.append(f'  n{did} -> n{uid} [style=dashed,color=red,constraint=false,xlabel="{v_ssa_name}"];')
-    else:  # DFG-only graph
-        for nid, txt in enumerate(graph.dfg_nodes):
-            sanitized_txt = txt.replace('"', '\\"')
-            # Then, use this new, clean variable inside the f-string.
-            lines.append(f'  dfg_n{nid} [label="{sanitized_txt}",shape=ellipse];')
-        for s, d in graph.dfg_edges:
-            lines.append(f'  dfg_n{s} -> dfg_n{d};')
+        if isinstance(lbl_data, list):
+            count = len(lbl_data)
+            full_list_str = "\\n".join(lbl_data)
+            safe_tooltip = full_list_str.replace('"', '\\"')
+            
+            if count > 3:
+                hitbox_text = f"Bus: {count} signals"
+            else:
+                hitbox_text = full_list_str
+
+            safe_xlabel = hitbox_text.replace('"', '\\"').replace('\n', '\\n')
+            
+            # Thick Bus Line
+            attr = (f' [xlabel="{safe_xlabel}", fontcolor="#00000000", '
+                    f'tooltip="{safe_tooltip}", penwidth=4.0, arrowsize=1.5, color="#333333"]')
+        else:
+            # Single Wire
+            safe_lbl = str(lbl_data).replace('"', '\\"')
+            attr = (f' [xlabel="{safe_lbl}", fontcolor="#00000000", '
+                    f'tooltip="{safe_lbl}", penwidth=2.0, arrowsize=1.0]')
+            
+        lines.append(f"  n{s} -> n{d}{attr};")
 
     lines.append("}")
     return "\n".join(lines)
+
+def generate_all_dots(hierarchy: DesignHierarchy, output_basename: str, link_prefix: str, args) -> dict:
+    """
+    Generates all DOT files for the entire hierarchy.
+    """
+    dot_files = {}
+    arch_graph = hierarchy.architectural_graph
+
+    arch_filename = f"{output_basename}_arch.dot"
+    dot_files[arch_filename] = _generate_single_dot(arch_graph, output_basename, link_prefix, args, is_arch=True)
+
+    for key, sub_graph in hierarchy.sub_graphs.items():
+        sub_graph_filename = f"{output_basename}_{key}.dot"
+        dot_files[sub_graph_filename] = _generate_single_dot(sub_graph, output_basename, link_prefix, args)
+
+    return dot_files

@@ -1,8 +1,23 @@
 # File: graph_model.py
 
+class DesignHierarchy:
+    """
+    Manages the entire hierarchical graph structure.
+    It holds the top-level architectural graph and all detailed sub-graphs.
+    """
+    def __init__(self, name):
+        self.name = name
+        self.architectural_graph = Graph(f"{name}_arch")
+        self.sub_graphs = {}  # Maps a unique ID to a detailed Graph object
+
+    def add_sub_graph(self, key, graph):
+        """Adds a detailed (structural or behavioral) graph."""
+        self.sub_graphs[key] = graph
+
 class Graph:
-    """A class to store and manage CFG and DFG data, avoiding global state."""
-    def __init__(self):
+    """A class to store and manage CFG and DFG data for a single view."""
+    def __init__(self, name):
+        self.name = name
         # SSA State
         self.ssacounter = {}
         self.latestversion = {}
@@ -10,6 +25,9 @@ class Graph:
         # Cluster State
         self.clusters = []
         self.cluster_stack = []
+        
+        # Node Metadata (New: for storing links and types)
+        self.node_metadata = {} 
 
         # CFG Data
         self.cfg_nodes = []
@@ -42,11 +60,22 @@ class Graph:
         """Returns the current latest SSA version of a variable."""
         return self.latestversion.get(var, var)
 
-    def add_cluster(self, name, color="lightgrey"):
+    def add_cluster(self, name, color="lightgrey", metadata=None):
         """Adds a new cluster (subgraph) to the graph."""
         idx = len(self.clusters)
-        self.clusters.append({"name": name, "color": color, "node_ids": []})
+        self.clusters.append({
+            "name": name,
+            "color": color,
+            "node_ids": [],
+            "metadata": metadata or {} # For storing type, links, etc.
+        })
         return idx
+    
+    def add_node_metadata(self, node_id, key, value):
+        """Stores metadata (like links) for a specific node."""
+        if node_id not in self.node_metadata:
+            self.node_metadata[node_id] = {}
+        self.node_metadata[node_id][key] = value
 
     def add_cfg_node(self, label, cluster_id=None):
         """Adds a new node to the CFG."""
