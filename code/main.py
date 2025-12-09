@@ -188,7 +188,22 @@ def main():
 
     args = p.parse_args()
 
-    base_name = os.path.splitext(os.path.basename(args.verilog_files[0]))[0]
+    # --- DETERMINE BASE NAME ---
+    # Logic: If multiple files or a directory, use the parent folder name.
+    #        If a single file, use the filename (without extension).
+    first_file = args.verilog_files[0]
+    if len(args.verilog_files) > 1:
+        # Use the name of the directory containing the files
+        # e.g., 'samples/riscv/*.v' -> 'riscv'
+        base_name = os.path.basename(os.path.dirname(os.path.abspath(first_file)))
+        # Fallback if the folder name is empty (e.g. current dir), use "project"
+        if not base_name:
+            base_name = "project"
+    else:
+        # Single file: use file name (e.g. 'picorv32.v' -> 'picorv32')
+        base_name = os.path.splitext(os.path.basename(first_file))[0]
+    
+    print(f"Project Name: {base_name}")
     
     # 1. Setup Directory Structure
     if args.output_dir:
