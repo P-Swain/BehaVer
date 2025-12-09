@@ -200,7 +200,7 @@ def create_viewer_html(output_dir, top_module_arch_svg_basename, module_views):
     viewer_path = os.path.join(output_dir, 'viewer.html')
     with open(viewer_path, 'w') as f:
         f.write(html_content)
-    print(f"✅ Wrote Viewer -> {viewer_path}")
+    print(f"Wrote Viewer -> {viewer_path}")
 
 def main():
     p = argparse.ArgumentParser(description="Generate linked, multi-level CFG/DFG from Verilog")
@@ -278,7 +278,7 @@ def main():
             with open(dot_filepath, 'w') as f:
                 f.write(dot_content)
             if args.format == 'dot':
-                print(f"✅ Wrote DOT -> {dot_filepath}")
+                print(f"Wrote DOT -> {dot_filepath}")
                 continue
 
         output_filepath = os.path.join(output_dir, f"{base_dot_name}.{args.format}")
@@ -288,19 +288,40 @@ def main():
             res = subprocess.run(cmd_dot, input=dot_content, text=True, check=True, capture_output=True)
             if res.stderr:
                 print(f"Graphviz warnings:\n{res.stderr}")
-            print(f"✅ Wrote Output -> {output_filepath}")
+            print(f"Wrote Output -> {output_filepath}")
         except FileNotFoundError:
             sys.exit("Error: 'dot' (Graphviz) not found. Please install Graphviz.")
         except subprocess.CalledProcessError as e:
             sys.exit(f"Graphviz error:\n{e.stderr}\n{e.stdout}")
             
+    # --- Create Viewer HTML ---
     if args.format == 'svg':
+        # Determine the main architectural view for the "Home" button
         top_module_name = ""
-        if args.top_module and any(h.name == args.top_module for h in hierarchies):
-            top_module_name = args.top_module
-        else:
+        
+        # IMPROVED: Check both 'name' (internal) and 'origName' (original Verilog name)
+        found_top = False
+        if args.top_module:
+            for h in hierarchies:
+                # We need to access the XML element to check origName, but h is a DesignHierarchy object.
+                # The DesignHierarchy object name typically matches the XML name.
+                # A safer bet is to match the hierarchy name against the top module.
+                
+                # Check 1: Exact match
+                if h.name == args.top_module:
+                    top_module_name = h.name
+                    found_top = True
+                    break
+                
+                # Check 2: Partial match for parameterized modules (e.g. "picorv32__pi1" starts with "picorv32")
+                if h.name.startswith(args.top_module + "__"):
+                    top_module_name = h.name
+                    found_top = True
+                    break
+
+        if not found_top:
             if args.top_module:
-                print(f"Warning: Top module '{args.top_module}' not found. Defaulting to first module.")
+                print(f"Warning: Top module '{args.top_module}' not found (or renamed by Verilator). Defaulting to first module: {hierarchies[0].name}")
             top_module_name = hierarchies[0].name
         
         top_module_arch_svg_basename = f"{base_name}_{top_module_name}_arch"
@@ -314,7 +335,7 @@ def main():
 
         create_viewer_html(output_dir, top_module_arch_svg_basename, module_views)
 
-    print(f"\n✨ Process complete! Open this file in your browser: {os.path.join(output_dir, 'viewer.html')}")
+    print(f"\nProcess complete! Open this file in your browser: {os.path.join(output_dir, 'viewer.html')}")
 
 
 if __name__ == '__main__':
